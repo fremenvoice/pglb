@@ -1,6 +1,7 @@
 import os
 import csv
 import requests
+import logging
 from io import StringIO
 
 from telegram_bot.services.database import get_connection
@@ -13,6 +14,8 @@ from telegram_bot.app.config import (
     GID_CONSULTANTS,
     GID_PHONES,
 )
+
+logger = logging.getLogger(__name__)
 
 # Фиксированные админы: username -> full_name
 FIXED_ADMINS = {
@@ -27,9 +30,13 @@ FIXED_ADMINS = {
 
 
 def load_all_from_sheets():
+    logger.info("📥 Загрузка данных из Google Sheets...")
+
     operators = fetch_csv(SPREADSHEET_ID_OPERATORS, GID_OPERATORS)
     consultants = fetch_csv(SPREADSHEET_ID_CONSULTANTS, GID_CONSULTANTS)
     phones = fetch_csv(SPREADSHEET_ID_PHONES, GID_PHONES)
+
+    logger.info(f"👷 Найдено операторов: {len(operators)}, консультантов: {len(consultants)}, телефонов: {len(phones)}")
 
     return {
         "operators": [row[0].strip() for row in operators if row],
@@ -42,6 +49,8 @@ def load_all_from_sheets():
 
 
 def sync_users_to_db():
+    logger.info("🔄 Синхронизация пользователей и ролей с базой данных...")
+
     data = load_all_from_sheets()
     operator_fios = set(data["operators"])
     consultant_fios = set(data["consultants"])
@@ -51,6 +60,7 @@ def sync_users_to_db():
     for username, full_name in FIXED_ADMINS.items():
         if full_name not in phone_map:
             phone_map[full_name] = username
+            logger.debug(f"👤 Добавлен фиксированный админ: {full_name} (@{username})")
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -58,7 +68,8 @@ def sync_users_to_db():
             for role in ["operator", "consultant", "admin"]:
                 cur.execute("INSERT INTO roles (name) VALUES (%s) ON CONFLICT DO NOTHING", (role,))
 
-            # Создание или обновление пользователей
+            created, updated = 0, 0
+
             for fio, username in phone_map.items():
                 roles = []
 
@@ -70,9 +81,8 @@ def sync_users_to_db():
                     roles.append("admin")
 
                 if not roles:
-                    continue  # не подходит по условиям
+                    continue
 
-                # Вставим/обновим пользователя
                 cur.execute("""
                     INSERT INTO users (full_name, username)
                     VALUES (%s, %s)
@@ -80,19 +90,16 @@ def sync_users_to_db():
                     RETURNING id
                 """, (fio, username))
                 user_id = cur.fetchone()[0]
+                updated += 1
 
-                # Очистим старые роли
                 cur.execute("DELETE FROM user_roles WHERE user_id = %s", (user_id,))
-
-                # Назначим роли
                 for role in roles:
                     cur.execute("SELECT id FROM roles WHERE name = %s", (role,))
                     role_id = cur.fetchone()[0]
                     cur.execute("INSERT INTO user_roles (user_id, role_id) VALUES (%s, %s)", (user_id, role_id))
 
-        conn.commit()
-    print("✅ Пользователи синхронизированы с БД.")
-
+            conn.commit()
+            logger.info(f"✅ Пользователи синхронизированы: {updated} записей обработано.")
 
 if __name__ == "__main__":
     sync_users_to_db()

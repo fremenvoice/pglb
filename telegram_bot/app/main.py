@@ -1,12 +1,17 @@
-from aiogram import Bot, Dispatcher
-from app.config import BOT_TOKEN
+import asyncio
+from telegram_bot.core.dispatcher import bot, dp
+from telegram_bot.core.router import setup_routers
+from telegram_bot.services.log_service import setup_logger
 
-bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
-dp = Dispatcher()
+logger = setup_logger()
 
-async def on_startup():
-    print("Бот запущен")
+async def main():
+    dp.include_router(setup_routers())
+    logger.info("🚀 Бот запущен")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(on_startup())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("⛔️ Бот остановлен")
