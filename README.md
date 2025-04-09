@@ -11,8 +11,9 @@
 ---
 
 Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+.\venv\Scripts\Activate.ps1
 
 ---
 
-git clone https://github.com/your/repo.git
+git clone https://github.com/fremenvoice/PGB.git
 cd PGB_bot
