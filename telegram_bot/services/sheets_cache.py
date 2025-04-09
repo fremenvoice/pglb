@@ -1,3 +1,6 @@
+from telegram_bot.services.log_service import setup_logger
+logger = setup_logger()
+
 import sys
 import os
 import csv
