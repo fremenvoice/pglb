@@ -9,7 +9,8 @@ from telegram_bot.services.text_service import get_text_block, render_welcome
 from telegram_bot.domain.menu_registry import menu_by_role
 from telegram_bot.keyboards.inline import (
     get_menu_inline_keyboard_for_role,
-    get_admin_role_choice_keyboard
+    get_admin_role_choice_keyboard,
+    get_admin_back_keyboard
 )
 
 router = Router()
@@ -56,7 +57,7 @@ async def handle_admin_menu_choice(callback: CallbackQuery):
 
     if choice == "none":
         text = get_text_block("about_park.md")
-        kb = get_menu_inline_keyboard_for_role("admin")  # возвращаем кнопку назад
+        kb = get_admin_back_keyboard()  # ✅ Только кнопка назад
         await callback.message.edit_text(text, reply_markup=kb)
     else:
         kb = get_menu_inline_keyboard_for_role(choice)
