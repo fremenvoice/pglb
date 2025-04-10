@@ -2,10 +2,14 @@ import logging
 import os
 
 from aiogram import Router, F
-from aiogram.types import Message, FSInputFile
+from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from telegram_bot.services.access_control import get_user_info
 from telegram_bot.services.text_service import get_text_block, render_welcome
+from telegram_bot.keyboards.inline import (
+    get_admin_role_choice_keyboard,
+    get_menu_inline_keyboard_for_role
+)
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -37,6 +41,40 @@ async def start_handler(message: Message):
     photo = FSInputFile(logo_path)
     await message.answer_photo(photo)
 
-    # Приветствие
+    # Приветствие + кнопка
     welcome_text = render_welcome(full_name, primary_role)
-    await message.answer(welcome_text)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🚀 Приступить к работе", callback_data="start_work")]
+    ])
+    await message.answer(welcome_text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == "start_work")
+async def handle_start_work(callback: CallbackQuery):
+    user = callback.from_user
+    username = user.username
+    info = get_user_info(username)
+
+    if not info or not info.get("roles"):
+        await callback.message.edit_text("🚫 Роль не определена.")
+        return
+
+    roles = info["roles"]
+    primary_role = roles[0]
+    full_name = info["full_name"]
+
+    logger.info(f"⚙️ @{username} нажал 'Приступить к работе'")
+
+    if primary_role == "admin":
+        # Для админов — редактируем сообщение с выбором меню
+        text = render_welcome(full_name, primary_role)
+        kb = get_admin_role_choice_keyboard()
+        await callback.message.edit_text(text, reply_markup=kb)
+    else:
+        # Оператор / консультант — отправляем меню отдельно
+        kb = get_menu_inline_keyboard_for_role(primary_role)
+        await callback.message.edit_reply_markup()  # удалим кнопку
+        await callback.message.answer("📋 Выберите раздел:", reply_markup=kb)
+
+    await callback.answer()
