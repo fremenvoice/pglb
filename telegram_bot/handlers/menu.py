@@ -13,7 +13,7 @@ from telegram_bot.keyboards.inline import (
     get_admin_role_choice_keyboard,
     get_back_to_menu_keyboard
 )
-from telegram_bot.core.states import AdminMenuContextState, QRScannerState
+# from telegram_bot.core.states import AdminMenuContextState  # не нужен QRScannerState
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -41,11 +41,9 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
     for item_label, filename in menu:
         if item_label == label:
             text = get_text_block(filename)
-
-            # Массив message_ids для удаления при возврате
             message_ids = []
 
-            # 1) "Посетители" или "ЧП" → текст + картинка
+            # 1) "Посетители" или "ЧП": текст + картинка
             if filename in ("visitors.md", "emergency.md"):
                 sent_text_msg = await callback.message.answer(text)
                 message_ids.append(sent_text_msg.message_id)
@@ -59,15 +57,13 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
                 )
                 message_ids.append(sent_photo_msg.message_id)
 
-            # 2) "qr_scanner.md" → отправляем текст и переводим в FSM для ожидания фото
+            # 2) "qr_scanner.md": просто инструкция, НЕ ставим FSM
             elif filename == "qr_scanner.md":
+                # Показываем текст. Фото можно отправлять в любой момент.
                 sent_msg = await callback.message.answer(text)
                 message_ids.append(sent_msg.message_id)
 
-                # Устанавливаем FSM состояние → ждём фото
-                await state.set_state(QRScannerState.waiting_for_photo)
-
-            # 3) Остальные разделы → текст + кнопка
+            # 3) Остальные разделы
             else:
                 sent_msg = await callback.message.answer(
                     text,
