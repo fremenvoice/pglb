@@ -1,19 +1,18 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from telegram_bot.domain.menu_registry import menu_by_role
 
+def get_menu_inline_keyboard_for_role(role: str, only_back: bool = False) -> InlineKeyboardMarkup:
+    buttons = []
 
-def get_menu_inline_keyboard_for_role(role: str) -> InlineKeyboardMarkup:
-    items = menu_by_role.get(role, [])
-    buttons = [
-        [InlineKeyboardButton(text=label, callback_data=f"menu:{label}")]
-        for label, _ in items
-    ]
+    if not only_back:
+        items = menu_by_role.get(role, [])
+        buttons += [
+            [InlineKeyboardButton(text=label, callback_data=f"menu:{label}")]
+            for label, _ in items
+        ]
 
-    # Только для операторов, консультантов, админов добавляем кнопку "назад"
     if role in {"operator", "consultant", "admin"}:
-        buttons.append([
-            InlineKeyboardButton(text="🔁 На экран выбора роли", callback_data="admin_back")
-        ])
+        buttons.append([InlineKeyboardButton(text="🔁 На экран выбора роли", callback_data="admin_back")])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -26,7 +25,7 @@ def get_admin_role_choice_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
-def get_admin_back_keyboard() -> InlineKeyboardMarkup:
+def get_back_to_menu_keyboard(role: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔁 На экран выбора роли", callback_data="admin_back")]
+        [InlineKeyboardButton(text="🔙 В главное меню", callback_data=f"back_to_menu:{role}")]
     ])
