@@ -6,11 +6,10 @@ def get_menu_inline_keyboard_for_role(role: str, only_back: bool = False) -> Inl
 
     if not only_back:
         items = menu_by_role.get(role, [])
-        buttons += [
-            [InlineKeyboardButton(text=label, callback_data=f"menu:{label}")]
-            for label, _ in items
-        ]
+        for label, _ in items:
+            buttons.append([InlineKeyboardButton(text=label, callback_data=f"menu:{label}")])
 
+    # Если роль в этом списке, добавляем кнопку «На экран выбора роли»
     if role in {"operator", "consultant", "admin"}:
         buttons.append([InlineKeyboardButton(text="🔁 На экран выбора роли", callback_data="admin_back")])
 
@@ -21,7 +20,9 @@ def get_admin_role_choice_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Меню операторов", callback_data="admin_menu:operator")],
         [InlineKeyboardButton(text="Меню консультантов", callback_data="admin_menu:consultant")],
-        [InlineKeyboardButton(text="Без роли", callback_data="admin_menu:none")]
+        [InlineKeyboardButton(text="Без роли", callback_data="admin_menu:none")],
+        [InlineKeyboardButton(text="QR-сканер", callback_data="admin_menu:qr_scanner")]
+        
     ])
 
 

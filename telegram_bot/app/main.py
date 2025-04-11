@@ -1,9 +1,13 @@
+# telegram_bot/app/main.py
+
 import asyncio
+import logging
+
 from telegram_bot.core.dispatcher import bot, dp
 from telegram_bot.core.router import setup_routers
-from telegram_bot.services.log_service import setup_logger
 
-logger = setup_logger()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("PGB_BOT")
 
 async def main():
     dp.include_router(setup_routers())
