@@ -1,9 +1,16 @@
+# telegram_bot/handlers/menu.py
+
 import logging
 import os
 
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    CallbackQuery,
+    FSInputFile,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
 
 from telegram_bot.services.access_control import get_user_info
 from telegram_bot.services.text_service import get_text_block, render_welcome
@@ -17,11 +24,14 @@ from telegram_bot.keyboards.inline import (
 router = Router()
 logger = logging.getLogger(__name__)
 
+
 @router.callback_query(F.data.startswith("menu:"))
 async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
     """
-    Пользователь (operator/consultant/admin) выбирает пункт из menu_by_role[role].
-    Если admin_subrole задан, фактически role=admin, но subrole=operator/consultant.
+    Пользователь (operator/consultant/admin) выбирает пункт из menu_by_role[..].
+    Если admin_subrole = operator => он работает как оператор.
+    Если admin_subrole = None => admin "чистый".
+    Если qr_scanner.md => scanning_role = subrole or admin.
     """
     username = callback.from_user.username
     label = callback.data.split("menu:")[1]
@@ -32,27 +42,27 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
         return
 
     data = await state.get_data()
-    # "role" из БД (admin/operator/consultant).
-    # Но если admin_subrole установлен, мы фактически показываем меню subrole.
-    admin_subrole = data.get("admin_subrole")  # None / "operator" / "consultant"
+    user_role = info["roles"][0]             # Роль в БД
+    admin_subrole = data.get("admin_subrole")  # "operator"/"consultant"/None
 
-    # Определяем, какое меню сейчас используем:
-    if info["roles"][0] == "admin" and admin_subrole is not None:
-        # Значит админ действует как operator/consultant
+    # Определяем текущее "откуда берем меню"
+    if user_role == "admin" and admin_subrole:
         current_role = admin_subrole
     else:
-        current_role = info["roles"][0]
+        current_role = user_role
 
     # Удаляем старые сообщения (меню)
     active_ids = data.get("active_message_ids", [])
     for msg_id in active_ids:
         try:
             await callback.bot.delete_message(callback.message.chat.id, msg_id)
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+
     data["active_message_ids"] = []
     await state.update_data(data)
 
+    # Находим в menu_by_role[current_role]
     menu = menu_by_role.get(current_role, [])
     message_ids = []
 
@@ -73,13 +83,12 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
                 message_ids.append(sent_photo.message_id)
 
             elif filename == "qr_scanner.md":
-                # scanning_role = current_role
-                # если subrole is not None => "operator"/"consultant",
-                # иначе "admin"
-                scanning_role = admin_subrole or "admin"
+                # scanning_role = current_role (operator/consultant) или "admin" (если no subrole)
+                scanning_role = current_role if current_role in ("operator","consultant") else "admin"
                 data["scanning_role"] = scanning_role
                 await state.update_data(data)
 
+                # Кнопка возврата
                 if scanning_role == "admin":
                     back_callback = "admin_back"
                     back_text = "Вернуться к выбору роли"
@@ -94,17 +103,15 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
                 message_ids.append(sent_msg.message_id)
 
             else:
-                # Обычные пункты
+                # Прочие разделы
                 sent_msg = await callback.message.answer(
                     text,
                     reply_markup=get_back_to_menu_keyboard(current_role)
                 )
                 message_ids.append(sent_msg.message_id)
 
-            # Запоминаем новое
             data["active_message_ids"] = message_ids
             await state.update_data(data)
-
             await callback.answer()
             return
 
@@ -114,8 +121,9 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("admin_menu:"))
 async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
     """
-    Админ выбирает: operator => subrole=operator, consultant => subrole=consultant,
-    none => subrole=None, qr_scanner => scanning_role=admin
+    Админ выбрал в списке ролей: operator/consultant/none/qr_scanner.
+    subrole="operator"/"consultant"/None. 
+    scanning_role="admin", if qr_scanner.
     """
     choice = callback.data.split("admin_menu:")[1]
     username = callback.from_user.username
@@ -126,20 +134,25 @@ async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
 
     data = await state.get_data()
 
-    # Сначала удаляем старое сообщение (список ролей)
+    # Удаляем старые сообщения
     active_ids = data.get("active_message_ids", [])
     for msg_id in active_ids:
         try:
             await callback.bot.delete_message(callback.message.chat.id, msg_id)
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Не удалось удалить старое сообщение {msg_id}: {e}")
+    try:
+        await callback.message.delete()
+    except Exception as e:
+        logger.warning(f"Не удалось удалить текущее сообщение admin_menu: {e}")
+
     data["active_message_ids"] = []
     await state.update_data(data)
 
     if choice == "qr_scanner":
-        # scanning_role=admin, subrole=None
-        data["scanning_role"] = "admin"
+        # subrole=None, scanning_role="admin"
         data["admin_subrole"] = None
+        data["scanning_role"] = "admin"
         await state.update_data(data)
 
         text = get_text_block("qr_scanner.md")
@@ -147,15 +160,17 @@ async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
             InlineKeyboardButton(text="Вернуться к выбору роли", callback_data="admin_back")
         ]])
         new_msg = await callback.message.answer(text, reply_markup=kb)
-        data["active_message_ids"].append(new_msg.message_id)
+        data["active_message_ids"] = [new_msg.message_id]
         await state.update_data(data)
         await callback.answer()
         return
 
     if choice == "none":
-        # subrole=None => показываем about_park.md (гостевое?)
+        # subrole=None, scanning_role=None
         data["admin_subrole"] = None
+        data["scanning_role"] = None
         await state.update_data(data)
+
         text = get_text_block("about_park.md")
         kb = get_menu_inline_keyboard_for_role("admin", only_back=True)
         new_msg = await callback.message.answer(text, reply_markup=kb)
@@ -164,31 +179,31 @@ async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    # Если choice in {operator, consultant}
-    # => subrole="operator" / "consultant"
-    data["admin_subrole"] = choice
-    await state.update_data(data)
+    if choice in ("operator", "consultant"):
+        # subrole=operator/consultant
+        data["admin_subrole"] = choice
+        data["scanning_role"] = None
+        await state.update_data(data)
 
-    # Показываем меню choice
-    from telegram_bot.domain.menu_registry import menu_by_role
-    role_menu = menu_by_role[choice]  # menu of operator/consultant
+        # Показываем меню choice
+        # "📋 Меню роли: operator/consultant"
+        new_msg = await callback.message.answer(
+            f"📋 Меню роли: {choice}",
+            reply_markup=get_menu_inline_keyboard_for_role(choice)
+        )
+        data["active_message_ids"] = [new_msg.message_id]
+        await state.update_data(data)
+        await callback.answer()
+        return
 
-    # Формируем инлайн-клаву
-    # (operator, consultant => can have "🔁 На экран выбора роли" etc.)
-    kb = get_menu_inline_keyboard_for_role(choice)
-    new_msg = await callback.message.answer(f"📋 Меню роли: {choice}", reply_markup=kb)
-
-    data["active_message_ids"] = [new_msg.message_id]
-    await state.update_data(data)
-
-    await callback.answer()
+    await callback.answer("Неизвестная команда admin_menu.")
 
 
 @router.callback_query(F.data == "admin_back")
 async def handle_admin_back(callback: CallbackQuery, state: FSMContext):
     """
-    Админ => вернуться к списку ролей.
-    Чистим active_message_ids, subrole, scanning_role, etc.
+    Админ возвращается к списку ролей (admin_role_choice_keyboard).
+    Удаляем все, subrole=None, scanning_role=None.
     """
     username = callback.from_user.username
     info = get_user_info(username)
@@ -208,27 +223,25 @@ async def handle_admin_back(callback: CallbackQuery, state: FSMContext):
             await callback.bot.delete_message(callback.message.chat.id, msg_id)
         except:
             pass
-
     try:
         await callback.message.delete()
     except:
         pass
 
-    # Полностью чистим FSM
+    # Полностью чистим
     await state.clear()
 
     new_msg = await callback.message.answer(text, reply_markup=kb)
-    # Запоминаем
-    data2 = {"active_message_ids": [new_msg.message_id]}
-    await state.update_data(data2)
+    await state.update_data({"active_message_ids": [new_msg.message_id]})
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("back_to_menu:"))
 async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     """
-    Если user=operator/consultant, 
-    или admin_subrole=operator/consultant => «В главное меню».
+    Вернуться в «В главное меню»:
+     - если operator/consultant
+     - или admin_subrole=operator/consultant
     """
     username = callback.from_user.username
     info = get_user_info(username)
@@ -237,38 +250,34 @@ async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
         return
 
     data = await state.get_data()
-    admin_subrole = data.get("admin_subrole")  # operator/consultant/None
-    user_role = info["roles"][0]  # "admin" in DB, or "operator" / "consultant"
+    user_role = info["roles"][0]
+    admin_subrole = data.get("admin_subrole")
 
-    # Если admin_subrole is not None => that's the current role
-    # If subrole is None => user_role might be operator/consultant or none
+    # Определяем текущее "действие"
     if user_role == "admin" and admin_subrole:
-        role = admin_subrole
+        current_role = admin_subrole
     else:
-        role = user_role
+        current_role = user_role
 
     # Удаляем все сообщения
     active_ids = data.get("active_message_ids", [])
     for msg_id in active_ids:
         try:
             await callback.bot.delete_message(callback.message.chat.id, msg_id)
-        except:
-            pass
-
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
     try:
         await callback.message.delete()
     except:
         pass
 
-    # Очищаем scanning_role, но не subrole (если хотим сохранить subrole)
-    data["active_message_ids"] = []
+    # Очищаем scanning_role, но оставляем admin_subrole
     data["scanning_role"] = None
+    data["active_message_ids"] = []
     await state.update_data(data)
 
-    # Показываем меню role
-    kb = get_menu_inline_keyboard_for_role(role)
-    new_msg = await callback.message.answer(f"📋 Меню роли: {role}", reply_markup=kb)
-
+    kb = get_menu_inline_keyboard_for_role(current_role)
+    new_msg = await callback.message.answer(f"📋 Меню роли: {current_role}", reply_markup=kb)
     data["active_message_ids"] = [new_msg.message_id]
     await state.update_data(data)
 
