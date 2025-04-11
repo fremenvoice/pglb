@@ -19,8 +19,7 @@ from telegram_bot.services.access_control import get_user_info
 router = Router()
 logger = logging.getLogger(__name__)
 
-QR_API_URL = "http://10.0.0.4/Api/Card/GetBalanceAndHistory"
-QR_API_KEY = "APIKEYGLOBAL"
+from telegram_bot.app.config import QR_API_URL, QR_API_KEY
 
 def extract_card_number(qr_data: str) -> str|None:
     match = re.search(r"f_persAcc=(\d+)", qr_data)
