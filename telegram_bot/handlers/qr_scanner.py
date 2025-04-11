@@ -8,10 +8,10 @@ from pyzbar.pyzbar import decode
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    Message, 
-    PhotoSize, 
-    InlineKeyboardMarkup, 
-    InlineKeyboardButton, 
+    Message,
+    PhotoSize,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
     CallbackQuery
 )
 from telegram_bot.services.access_control import get_user_info
@@ -22,48 +22,52 @@ logger = logging.getLogger(__name__)
 QR_API_URL = "http://10.0.0.4/Api/Card/GetBalanceAndHistory"
 QR_API_KEY = "APIKEYGLOBAL"
 
-def extract_card_number(qr_data: str) -> str | None:
+def extract_card_number(qr_data: str) -> str|None:
     match = re.search(r"f_persAcc=(\d+)", qr_data)
     return match.group(1) if match else None
 
 @router.message(F.photo)
 async def global_qr_handler(message: Message, state: FSMContext):
     """
-    Глобальный хендлер фото. 
-    Проверяем scanning_role => если None, игнорируем фото.
-    Иначе распознаем QR, выводим кнопки: "Сканировать ещё", "Вернуться".
-    У админа => "Вернуться к выбору роли" (admin_back),
-    у operator/consultant => "back_to_menu:operator/consultant"
+    1. Если user не авторизован => ignore
+    2. Если scanning_role=None => fallback: subrole or user_role
+    3. Сканируем QR, выводим кнопки: 
+       - Сканировать ещё
+       - Если scanning_role="admin" => "Вернуться к выбору роли"
+         Иначе => "В главное меню"
     """
     username = message.from_user.username
     info = get_user_info(username)
     if not info or not info["roles"]:
-        logger.info(f"@{username} не авторизован — пропускаем фото.")
+        logger.info(f"@{username} не авторизован, игнорируем фото.")
         return
 
+    user_role = info["roles"][0]  # "admin" or "operator"/"consultant"
     data = await state.get_data()
-    scanning_role = data.get("scanning_role")  # admin / operator / consultant / None
-    if not scanning_role:
-        # Пользователь не нажимал "qr_scanner.md" => пропускаем
-        return
+    scanning_role = data.get("scanning_role")  # None / "admin"/"operator"/"consultant"
+    admin_subrole = data.get("admin_subrole")  # None or "operator"/"consultant"
 
-    # Записываем ID фото, чтобы удалить при выходе
+    if scanning_role is None:
+        # Если admin_subrole=operator => scanning_role=operator
+        # Если admin_subrole=None => scanning_role=user_role
+        scanning_role = admin_subrole or user_role
+        data["scanning_role"] = scanning_role
+        await state.update_data(data)
+
     active_ids = data.get("active_message_ids", [])
     active_ids.append(message.message_id)
     await state.update_data(active_message_ids=active_ids)
 
-    # "Распознаю QR..."
     progress_msg = await message.answer("📸 Распознаю QR-код...")
     active_ids.append(progress_msg.message_id)
     await state.update_data(active_message_ids=active_ids)
 
-    # Скачиваем
     photo: PhotoSize = message.photo[-1]
     file = await message.bot.get_file(photo.file_id)
     file_bytes = await message.bot.download_file(file.file_path)
+
     img_array = np.frombuffer(file_bytes.read(), np.uint8)
     img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-
     decoded = decode(img)
     if not decoded:
         await progress_msg.delete()
@@ -78,21 +82,24 @@ async def global_qr_handler(message: Message, state: FSMContext):
     if not card_number:
         await progress_msg.delete()
         kb = _qr_keyboard(scanning_role)
-        err_msg = await message.answer("❌ В QR-коде нет f_persAcc.", reply_markup=kb)
-        active_ids.append(err_msg.message_id)
+        e_msg = await message.answer("❌ В QR-коде нет f_persAcc.", reply_markup=kb)
+        active_ids.append(e_msg.message_id)
         await state.update_data(active_message_ids=active_ids)
         return
 
-    # Запрос к API
     try:
-        resp = requests.get(QR_API_URL, params={"cardNumber": card_number, "apikey": QR_API_KEY}, timeout=10)
+        resp = requests.get(QR_API_URL, params={
+            "cardNumber": card_number,
+            "apikey": QR_API_KEY
+        }, timeout=10)
         resp.raise_for_status()
-        data_api = resp.json()
 
+        data_api = resp.json()
         balance = data_api.get("Balance", "неизвестно")
         history = data_api.get("BalanceHistory", [])
 
-        text = f"**Номер карты**: `{card_number}`\n**Баланс**: `{balance}`\n\n"
+        text = f"**Номер карты**: `{card_number}`\n" \
+               f"**Баланс**: `{balance}`\n\n"
         if history:
             text += "**История операций**:\n"
             for h in history:
@@ -104,26 +111,26 @@ async def global_qr_handler(message: Message, state: FSMContext):
 
         await progress_msg.delete()
         kb = _qr_keyboard(scanning_role)
-        result_msg = await message.answer(text, parse_mode="Markdown", reply_markup=kb)
-        active_ids.append(result_msg.message_id)
+        r_msg = await message.answer(text, parse_mode="Markdown", reply_markup=kb)
+        active_ids.append(r_msg.message_id)
         await state.update_data(active_message_ids=active_ids)
 
     except requests.RequestException as e:
         logger.error(f"Ошибка при запросе к API: {e}")
         await progress_msg.delete()
         kb = _qr_keyboard(scanning_role)
-        err_msg = await message.answer("❌ Ошибка при запросе к серверу.", reply_markup=kb)
-        active_ids.append(err_msg.message_id)
+        e_msg = await message.answer("❌ Ошибка при запросе к серверу.", reply_markup=kb)
+        active_ids.append(e_msg.message_id)
         await state.update_data(active_message_ids=active_ids)
 
 @router.callback_query(F.data == "qr_again")
 async def handle_qr_again(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
     try:
         await callback.message.delete()
     except Exception as e:
         logger.warning(f"Не удалось удалить сообщение: {e}")
 
-    data = await state.get_data()
     active_ids = data.get("active_message_ids", [])
     new_msg = await callback.message.answer("Пожалуйста, отправьте новое фото с QR-кодом.")
     active_ids.append(new_msg.message_id)
@@ -133,8 +140,8 @@ async def handle_qr_again(callback: CallbackQuery, state: FSMContext):
 
 def _qr_keyboard(scanning_role: str) -> InlineKeyboardMarkup:
     """
-    Если admin => "Вернуться" -> admin_back
-    Иначе => back_to_menu:operator/consultant
+    Если scanning_role='admin' => "Вернуться к выбору роли" => admin_back
+    Иначе => "В главное меню" => back_to_menu:operator/consultant
     """
     if scanning_role == "admin":
         back_callback = "admin_back"
