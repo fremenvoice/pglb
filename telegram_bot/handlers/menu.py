@@ -124,17 +124,27 @@ async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
     await state.update_data(data)
 
     if choice == "qr_scanner":
+        # Обновляем состояние, чтобы роль была установлена как "admin"
         data["admin_subrole"] = None
         data["scanning_role"] = "admin"
         await state.update_data(data)
 
+        # Получаем текст для QR-сканера
         text = get_text_block("qr_scanner.md")
+
+        # Формируем клавиатуру с кнопкой для возврата
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [AiogramInlineKeyboardButton("Вернуться к выбору роли", callback_data="admin_back")]
+            [AiogramInlineKeyboardButton(text="Вернуться к выбору роли", callback_data="admin_back")]
         ])
+
+        # Отправляем сообщение с текстом и клавиатурой
         new_msg = await callback.message.answer(text, reply_markup=kb)
+
+        # Сохраняем ID активного сообщения
         data["active_message_ids"] = [new_msg.message_id]
         await state.update_data(data)
+
+        # Завершаем обработку обновления
         await callback.answer()
         return
 
