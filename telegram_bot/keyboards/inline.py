@@ -7,20 +7,20 @@ from telegram_bot.domain.menu_registry import menu_by_role
 def get_menu_inline_keyboard_for_role(role: str, only_back: bool = False) -> InlineKeyboardMarkup:
     buttons = []
 
-    if not only_back:
-        items = menu_by_role.get(role, [])
-        for label, _ in items:
-            buttons.append([
-                AiogramInlineKeyboardButton(text=label, callback_data=f"menu:{label}")
-            ])
+    items = menu_by_role.get(role, [])
+    for label, _ in items:
+        buttons.append([
+            AiogramInlineKeyboardButton(text=label, callback_data=f"menu:{label}")
+        ])
 
-    # Кнопка возврата только у админа или если явно указано only_back=True
-    if role == "admin" or only_back:
+    # Если это админ, добавляем кнопку возврата в конец
+    if only_back:
         buttons.append([
             AiogramInlineKeyboardButton(text="🔁 На экран выбора роли", callback_data="admin_back")
         ])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
 
 
 

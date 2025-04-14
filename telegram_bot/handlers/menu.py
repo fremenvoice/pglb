@@ -144,12 +144,18 @@ async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
         await state.update_data(data)
 
         text = get_text_block("about_park.md")
-        kb = get_menu_inline_keyboard_for_role("admin", only_back=True)
+
+        # Создаём клавиатуру с ОДНОЙ кнопкой — "🔁 На экран выбора роли"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [AiogramInlineKeyboardButton(text="🔁 На экран выбора роли", callback_data="admin_back")]
+        ])
+
         new_msg = await callback.message.answer(text, reply_markup=kb)
         data["active_message_ids"] = [new_msg.message_id]
         await state.update_data(data)
         await callback.answer()
         return
+
 
 
     if choice in ("operator", "consultant"):
