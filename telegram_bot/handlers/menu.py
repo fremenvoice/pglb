@@ -253,13 +253,11 @@ async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     user_role = info["roles"][0]
     admin_subrole = data.get("admin_subrole")
 
-    # Определяем текущее "действие"
     if user_role == "admin" and admin_subrole:
         current_role = admin_subrole
     else:
         current_role = user_role
 
-    # Удаляем все сообщения
     active_ids = data.get("active_message_ids", [])
     for msg_id in active_ids:
         try:
@@ -271,12 +269,13 @@ async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     except:
         pass
 
-    # Очищаем scanning_role, но оставляем admin_subrole
     data["scanning_role"] = None
     data["active_message_ids"] = []
     await state.update_data(data)
 
-    kb = get_menu_inline_keyboard_for_role(current_role)
+    only_back = user_role == "admin"
+    kb = get_menu_inline_keyboard_for_role(current_role, only_back=only_back)
+
     new_msg = await callback.message.answer(f"📋 Меню роли: {current_role}", reply_markup=kb)
     data["active_message_ids"] = [new_msg.message_id]
     await state.update_data(data)

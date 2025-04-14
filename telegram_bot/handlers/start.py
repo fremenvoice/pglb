@@ -3,13 +3,16 @@ import os
 
 from aiogram import Router, F
 from aiogram.types import Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.fsm.context import FSMContext
 
 from telegram_bot.services.access_control import get_user_info
 from telegram_bot.services.text_service import get_text_block, render_welcome
 from telegram_bot.keyboards.inline import (
-    get_admin_role_choice_keyboard,
-    get_menu_inline_keyboard_for_role
+    get_admin_role_choice_keyboard
 )
+
+# Импорт обработчика меню
+from telegram_bot.handlers.menu import back_to_main_menu as handle_back_to_main_menu
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -51,7 +54,7 @@ async def start_handler(message: Message):
 
 
 @router.callback_query(F.data == "start_work")
-async def handle_start_work(callback: CallbackQuery):
+async def handle_start_work(callback: CallbackQuery, state: FSMContext):
     user = callback.from_user
     username = user.username
     info = get_user_info(username)
@@ -72,9 +75,20 @@ async def handle_start_work(callback: CallbackQuery):
         kb = get_admin_role_choice_keyboard()
         await callback.message.edit_text(text, reply_markup=kb)
     else:
-        # Оператор / консультант — отправляем меню отдельно
-        kb = get_menu_inline_keyboard_for_role(primary_role)
+        # Оператор / консультант — передаём в menu.py
         await callback.message.edit_reply_markup()  # удалим кнопку
-        await callback.message.answer("📋 Выберите раздел:", reply_markup=kb)
+        await callback.bot.send_chat_action(callback.message.chat.id, "typing")
+
+        # Вызываем обработчик возврата в главное меню роли
+        await handle_back_to_main_menu(
+            callback=CallbackQuery(
+                id=callback.id,
+                from_user=callback.from_user,
+                chat_instance=callback.chat_instance,
+                message=callback.message,
+                data=f"back_to_menu:{primary_role}"
+            ),
+            state=state
+        )
 
     await callback.answer()
