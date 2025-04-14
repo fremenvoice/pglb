@@ -14,12 +14,14 @@ def get_menu_inline_keyboard_for_role(role: str, only_back: bool = False) -> Inl
                 AiogramInlineKeyboardButton(text=label, callback_data=f"menu:{label}")
             ])
 
-    if role in {"admin", "operator", "consultant"} or only_back:
+    # Кнопка возврата только у админа или если явно указано only_back=True
+    if role == "admin" or only_back:
         buttons.append([
             AiogramInlineKeyboardButton(text="🔁 На экран выбора роли", callback_data="admin_back")
         ])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
 
 
 
