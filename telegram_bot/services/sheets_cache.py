@@ -14,9 +14,11 @@ from telegram_bot.app.config import (
     SPREADSHEET_ID_OPERATORS,
     SPREADSHEET_ID_CONSULTANTS,
     SPREADSHEET_ID_PHONES,
+    SPREADSHEET_ID_OPERATORS_RENT,
     GID_OPERATORS,
     GID_CONSULTANTS,
     GID_PHONES,
+    GID_OPERATORS_RENT
 )
 
 FIXED_ROLES_PATH = os.path.join(os.path.dirname(__file__), "fixed_roles.json")
@@ -39,7 +41,7 @@ async def fetch_csv(spreadsheet_id: str, gid: int) -> list[list[str]]:
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
             response.raise_for_status()
-            text_data = await response.text()
+            text_data = await response.text(encoding='utf-8')
             csv_data = StringIO(text_data)
             reader = csv.reader(csv_data)
             return [row for row in reader if row and any(cell.strip() for cell in row)]
@@ -48,6 +50,12 @@ async def load_all_from_sheets():
     operators = await fetch_csv(SPREADSHEET_ID_OPERATORS, GID_OPERATORS)
     consultants = await fetch_csv(SPREADSHEET_ID_CONSULTANTS, GID_CONSULTANTS)
     phones = await fetch_csv(SPREADSHEET_ID_PHONES, GID_PHONES)
+    operators_rent = await fetch_csv(SPREADSHEET_ID_OPERATORS_RENT, GID_OPERATORS_RENT)
+
+    logger.info(f"Данные операторов: {operators}")
+    logger.info(f"Данные консультантов: {consultants}")
+    logger.info(f"Данные телефонов: {phones}")
+    logger.info(f"Данные операторов аренды: {operators_rent}")
 
     return {
         "operators": [row[0].strip() for row in operators if row],
@@ -55,6 +63,10 @@ async def load_all_from_sheets():
         "phones": [
             {"full_name": row[0].strip(), "username": row[2].strip()}
             for row in phones if len(row) >= 3 and row[2].strip()
+        ],
+        "operators_rent": [
+            {"full_name": row[0].strip(), "username": row[3].strip()}
+            for row in operators_rent if len(row) >= 4 and row[0].strip() and row[3].strip()
         ]
     }
 
@@ -64,28 +76,42 @@ async def sync_users_to_db_async():
 
     operator_fios = set(data["operators"])
     consultant_fios = set(data["consultants"])
+    operator_rent_fios = {r["full_name"] for r in data["operators_rent"]}
     phone_map = {p["full_name"]: p["username"] for p in data["phones"]}
+
+    # Добавляем арендаторов
+    for r in data["operators_rent"]:
+        phone_map[r["full_name"]] = r["username"]
 
     for username, (fio, _) in fixed_roles.items():
         phone_map[fio] = username
 
+    logger.info(f"📱 Пользователи из phones (с учётом аренды): {phone_map}")
+    logger.info(f"🏠 Пользователи арендаторы: {operator_rent_fios}")
+
     with get_connection() as conn:
         with conn.cursor() as cur:
-            for role in {"operator", "consultant", "admin"}:
+            for role in {"operator", "consultant", "admin", "operator_rent"}:
                 cur.execute("INSERT INTO roles (name) VALUES (%s) ON CONFLICT DO NOTHING", (role,))
             conn.commit()
+
             for fio, username in phone_map.items():
                 roles = []
+
                 if username in fixed_roles:
-                    fixed_role = fixed_roles[username][1]
-                    roles = [fixed_role]
+                    roles = [fixed_roles[username][1]]
                 else:
                     if fio in operator_fios:
                         roles.append("operator")
                     if fio in consultant_fios:
                         roles.append("consultant")
+                    if fio in operator_rent_fios:
+                        roles.append("operator_rent")
+
                 if not roles:
                     continue
+
+                logger.info(f"📥 Вставка: {fio} ({username}) → {roles}")
                 cur.execute("""
                     INSERT INTO users (full_name, username)
                     VALUES (%s, %s)
@@ -93,11 +119,17 @@ async def sync_users_to_db_async():
                     RETURNING id
                 """, (fio, username))
                 user_id = cur.fetchone()[0]
+
                 cur.execute("DELETE FROM user_roles WHERE user_id = %s", (user_id,))
                 for role in set(roles):
                     cur.execute("SELECT id FROM roles WHERE name = %s", (role,))
-                    role_id = cur.fetchone()[0]
+                    res = cur.fetchone()
+                    if not res:
+                        logger.warning(f"❗ Роль '{role}' не найдена в БД, пропущена.")
+                        continue
+                    role_id = res[0]
                     cur.execute("INSERT INTO user_roles (user_id, role_id) VALUES (%s, %s)", (user_id, role_id))
+
         conn.commit()
     logger.info("✅ Пользователи синхронизированы с БД.")
 
