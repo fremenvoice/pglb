@@ -13,7 +13,8 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 # Запустить сервис кэширования Google Sheets
 python -m telegram_bot.services.sheets_cache
-```
+python -m telegram_bot.services.sheets_cache --force-reload
+
 
 ---
 

@@ -38,15 +38,27 @@ async def fetch_card_info(card_number: str) -> dict | None:
         return None
 
 
+async def update_active_messages(message: Message, state: FSMContext, new_ids: list[int]):
+    data = await state.get_data()
+    for msg_id in data.get("active_message_ids", []):
+        try:
+            await message.bot.delete_message(message.chat.id, msg_id)
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+    await state.update_data({
+        **data,
+        "active_message_ids": new_ids
+    })
+
+
 async def send_qr_scanner(message: Message, role: str):
-    """
-    Унифицированный запуск QR-интерфейса (с кнопками или без).
-    """
     if role == "operator_rent":
-        await message.answer("🔍 Отправьте фото с QR-кодом карты. Сканирование начнётся автоматически.")
+        msg = await message.answer("🔍 Отправьте фото с QR-кодом карты. Сканирование начнётся автоматически.")
     else:
         kb = _qr_keyboard(role)
-        await message.answer("🔍 Отправьте фото с QR-кодом или выберите действие:", reply_markup=kb)
+        msg = await message.answer("🔍 Отправьте фото с QR-кодом или выберите действие:", reply_markup=kb)
+
+    await update_active_messages(message, message.bot.fsm.get_state(message.from_user.id), [msg.message_id])
 
 
 @router.message(F.photo)
@@ -63,21 +75,9 @@ async def global_qr_handler(message: Message, state: FSMContext):
     data["scanning_role"] = scanning_role
     await state.update_data(data)
 
-    # Очистка предыдущих сообщений
-    active_ids = data.get("active_message_ids", [])
-    for msg_id in active_ids:
-        try:
-            await message.bot.delete_message(message.chat.id, msg_id)
-        except Exception as e:
-            logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
-    data["active_message_ids"] = []
-
-    # Сообщение о процессе
     progress_msg = await message.answer("📸 Распознаю QR-код...")
-    data["active_message_ids"] = [progress_msg.message_id, message.message_id]
-    await state.update_data(data)
+    await update_active_messages(message, state, [progress_msg.message_id, message.message_id])
 
-    # Извлечение изображения
     photo: PhotoSize = message.photo[-1]
     file = await message.bot.get_file(photo.file_id)
     file_bytes = await message.bot.download_file(file.file_path)
@@ -88,18 +88,18 @@ async def global_qr_handler(message: Message, state: FSMContext):
     await progress_msg.delete()
 
     if not decoded:
-        await _send_qr_response(message, "❌ Не удалось распознать QR.", scanning_role, data, state)
+        await _send_qr_response(message, "❌ Не удалось распознать QR.", scanning_role, state)
         return
 
     qr_text = decoded[0].data.decode("utf-8")
     card_number = extract_card_number(qr_text)
     if not card_number:
-        await _send_qr_response(message, "❌ В QR-коде нет f_persAcc.", scanning_role, data, state)
+        await _send_qr_response(message, "❌ В QR-коде нет f_persAcc.", scanning_role, state)
         return
 
     data_api = await fetch_card_info(card_number)
     if not data_api:
-        await _send_qr_response(message, "❌ Ошибка при запросе к серверу.", scanning_role, data, state)
+        await _send_qr_response(message, "❌ Ошибка при запросе к серверу.", scanning_role, state)
         return
 
     balance = data_api.get("Balance", "неизвестно")
@@ -115,14 +115,13 @@ async def global_qr_handler(message: Message, state: FSMContext):
             place = h.get("parkObjectName", "")
             text += f"{dt} {sign}{val} {place}\n"
 
-    await _send_qr_response(message, text, scanning_role, data, state, markdown=True)
+    await _send_qr_response(message, text, scanning_role, state, markdown=True)
 
 
 async def _send_qr_response(
     message: Message,
     text: str,
     role: str,
-    data: dict,
     state: FSMContext,
     markdown: bool = False
 ):
@@ -132,8 +131,7 @@ async def _send_qr_response(
         parse_mode="Markdown" if markdown else None,
         reply_markup=kb if kb else None
     )
-    data["active_message_ids"].append(msg.message_id)
-    await state.update_data(data)
+    await update_active_messages(message, state, [msg.message_id])
 
 
 @router.callback_query(F.data == "qr_again")
@@ -147,12 +145,8 @@ async def handle_qr_again(callback: CallbackQuery, state: FSMContext):
         logger.warning(f"Не удалось удалить сообщение: {e}")
 
     kb = _qr_keyboard(scanning_role)
-    msg = await callback.message.answer(
-        "Пожалуйста, отправьте новое фото с QR-кодом.",
-        reply_markup=kb if kb else None
-    )
-    data["active_message_ids"].append(msg.message_id)
-    await state.update_data(data)
+    msg = await callback.message.answer("Пожалуйста, отправьте новое фото с QR-кодом.", reply_markup=kb)
+    await update_active_messages(callback.message, state, [msg.message_id])
     await callback.answer()
 
 
@@ -168,8 +162,6 @@ def _qr_keyboard(scanning_role: str) -> InlineKeyboardMarkup | None:
         back_text = "В главное меню"
 
     return InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(text="Сканировать ещё", callback_data="qr_again"),
-            InlineKeyboardButton(text=back_text, callback_data=back_callback)
-        ]]
+        inline_keyboard=[[InlineKeyboardButton(text="Сканировать ещё", callback_data="qr_again"),
+                          InlineKeyboardButton(text=back_text, callback_data=back_callback)]]
     )

@@ -1,0 +1,325 @@
+{
+  "operators": [
+    "",
+    "Барышникова Екатерина",
+    "Королёва Лика",
+    "Люкин Максим",
+    "Русских Юра",
+    "Макарова Светлана",
+    "Канцельсон Лиза",
+    "Бушмелев Андрей",
+    "Мальцев Степан",
+    "Пленкина Ксюша",
+    "Королева Влада",
+    "Дерендяева Диана",
+    "Востриков Артём",
+    "Алтыбаева Аля",
+    "Казакова Настя",
+    "Орлова Лера",
+    "Макшакова Любовь",
+    "Смолянская Марго",
+    "Шемякина Анна",
+    "Краснова Лиля",
+    "Лазурина Ираида",
+    "Ардашева Дарья",
+    "Дудина Ангелина",
+    "Еремина Екатерина",
+    "Хабибуллина Азалия",
+    "Зыгова Регина",
+    "Евсикова Лиза"
+  ],
+  "consultants": [
+    "",
+    "Врачева Вероника",
+    "Долганова Елизавета",
+    "Евдокимова Арина",
+    "Захарова Даша",
+    "Захарова Настя",
+    "Кардапольцев Егор",
+    "Куклина Дарина",
+    "Ласков Богдан",
+    "Мымрина Ксения",
+    "Оконешникова Вика",
+    "Сон Даша",
+    "Унашхотлова София",
+    "Шалагина Аделина",
+    "Андриянов Саша",
+    "Тронина Васелиса",
+    "Филиппова Таня",
+    "Кожевина Алина",
+    "Гусева Ксения",
+    "Мазитов Артемий",
+    "Мельникова Лиза",
+    "Глазырина Женя",
+    "Долганова Лиза",
+    "Белых Мария"
+  ],
+  "phones": [
+    {
+      "full_name": "Фио",
+      "username": "ник в тг"
+    },
+    {
+      "full_name": "Барышникова Екатерина",
+      "username": "@EkaterinaBaryushnikova"
+    },
+    {
+      "full_name": "Евдокимова Арина",
+      "username": "@aalppw"
+    },
+    {
+      "full_name": "Сон Даша",
+      "username": "@daszxzx"
+    },
+    {
+      "full_name": "Врачева Вероника",
+      "username": "@fiauq"
+    },
+    {
+      "full_name": "Мымрина Ксения",
+      "username": "@ms_ksyshka"
+    },
+    {
+      "full_name": "Долганова Лиза",
+      "username": "@kskskskskkskc"
+    },
+    {
+      "full_name": "Ласков Богдан",
+      "username": "@Bogdik7"
+    },
+    {
+      "full_name": "Захарова Даша",
+      "username": "@dcinp"
+    },
+    {
+      "full_name": "Захарова Настя",
+      "username": "@verbiona"
+    },
+    {
+      "full_name": "Мазитов Артемий",
+      "username": "@Minefnafer"
+    },
+    {
+      "full_name": "Королева Лика",
+      "username": "@oaoaoaoaooaa"
+    },
+    {
+      "full_name": "Люкин Максим",
+      "username": "@jep717"
+    },
+    {
+      "full_name": "Пономарева Юля",
+      "username": "@u1cha"
+    },
+    {
+      "full_name": "Русских Юра",
+      "username": "@LevaGanza"
+    },
+    {
+      "full_name": "Макарова Светлана",
+      "username": "@MakarovaSvetik"
+    },
+    {
+      "full_name": "Канцельсон Лиза",
+      "username": "@Izh_liza_katsnelson1"
+    },
+    {
+      "full_name": "Унашхотлова София",
+      "username": "@uhotlova"
+    },
+    {
+      "full_name": "Куклина Дарина",
+      "username": "@dqwws"
+    },
+    {
+      "full_name": "Бушмелев Андрей",
+      "username": "@FortelA17251"
+    },
+    {
+      "full_name": "Оконешникова Вика",
+      "username": "@vitulya_a"
+    },
+    {
+      "full_name": "Кардапольцев Егор",
+      "username": "@Egor_wei"
+    },
+    {
+      "full_name": "Шалагина Аделина",
+      "username": "@eeyyyyyyyyyyyyyyy"
+    },
+    {
+      "full_name": "Мальцев Степан",
+      "username": "@karef4n"
+    },
+    {
+      "full_name": "Андриянов Саша",
+      "username": "@esketitgoat"
+    },
+    {
+      "full_name": "Тронина Васелиса",
+      "username": "@m4tersh4"
+    },
+    {
+      "full_name": "Востриков Артем",
+      "username": "@hiomaf"
+    },
+    {
+      "full_name": "Алтыбаева Аля",
+      "username": "@alyaaltybaeva"
+    },
+    {
+      "full_name": "Филиппова Таня",
+      "username": "@whagxx"
+    },
+    {
+      "full_name": "Кожевина Алина",
+      "username": "@rochetca"
+    },
+    {
+      "full_name": "Казакова Настя",
+      "username": "@Vkook2426"
+    },
+    {
+      "full_name": "Орлова Лера",
+      "username": "@leeerrraa1"
+    },
+    {
+      "full_name": "Дерендяева Диана",
+      "username": "@luvvv7"
+    },
+    {
+      "full_name": "Пленкина Ксюша",
+      "username": "@Ksnplnkn"
+    },
+    {
+      "full_name": "Королева Влада",
+      "username": "@bettakoshechka"
+    },
+    {
+      "full_name": "Гусева Ксения",
+      "username": "@aaa_nba3"
+    },
+    {
+      "full_name": "Шемякина Анна",
+      "username": "@ShemyakinaAnya"
+    },
+    {
+      "full_name": "Мельникова Лиза",
+      "username": "@wfkqw"
+    },
+    {
+      "full_name": "Глазырина Женя",
+      "username": "@gaspeq"
+    },
+    {
+      "full_name": "Краснова Лиля",
+      "username": "@liiilyyyyaaaa"
+    },
+    {
+      "full_name": "Лазурина Ираида",
+      "username": "@llazurinaa"
+    },
+    {
+      "full_name": "Ардашева Дарья",
+      "username": "@miffiixx"
+    },
+    {
+      "full_name": "Хабибуллина Азалия",
+      "username": "@azalka90"
+    },
+    {
+      "full_name": "Белых Мария",
+      "username": "@mashk_rrrrr"
+    },
+    {
+      "full_name": "Дудина Ангелина",
+      "username": "@Angelina_08D"
+    },
+    {
+      "full_name": "Еремина Екатерина",
+      "username": "@Kaaatrinnnnnn"
+    }
+  ],
+  "operators_rent": [
+    {
+      "full_name": "Дресвянникова Юлия Сергеевна",
+      "username": "@juuullls"
+    },
+    {
+      "full_name": "Байков Егор Алексеевич",
+      "username": "@Ney_6"
+    },
+    {
+      "full_name": "Викулова Ариадна Борисовна",
+      "username": "@vklariadna"
+    },
+    {
+      "full_name": "Кузнецова Кристина Александровна",
+      "username": "@Kuznetsova_krr"
+    },
+    {
+      "full_name": "Бобылева Елена Олеговна",
+      "username": "@l1ennn"
+    },
+    {
+      "full_name": "Денисова Ксения Александровна",
+      "username": "@ksushe444ka"
+    },
+    {
+      "full_name": "Радько Екатерина Игоревна",
+      "username": "@ekkkater_ina"
+    },
+    {
+      "full_name": "Балакин Даниил Михайлович",
+      "username": "@balakindaniil"
+    },
+    {
+      "full_name": "Юркова Дарья Николаевна",
+      "username": "@qwer_qon"
+    },
+    {
+      "full_name": "Люкина Анастасия Владимировна",
+      "username": "@anluu333"
+    },
+    {
+      "full_name": "Родионова Ксения Андреевна",
+      "username": "@r66_k"
+    },
+    {
+      "full_name": "Шишминцева Дарья Артемовна",
+      "username": "@darushka_0_1"
+    },
+    {
+      "full_name": "Тишурова Татьяна Валентиновна",
+      "username": "@ebzlina"
+    },
+    {
+      "full_name": "Косолапова Агата Денисовна",
+      "username": "@Kosolapik"
+    },
+    {
+      "full_name": "Бородицкая Татьяна Андреевна",
+      "username": "@s378290"
+    },
+    {
+      "full_name": "Мухутдинов Тимур Камильевич",
+      "username": "@ttt6918"
+    },
+    {
+      "full_name": "Матвеев Евгений Игоревич",
+      "username": "@yrappobeda"
+    },
+    {
+      "full_name": "Феклина Татьяна Сергеевна",
+      "username": "@tanechkaff"
+    },
+    {
+      "full_name": "Пугачева Анна Дмитриевна",
+      "username": "@a_nuta17"
+    },
+    {
+      "full_name": "Матушкина Мария Сергеевна",
+      "username": "@cherryliqueur"
+    }
+  ]
+}

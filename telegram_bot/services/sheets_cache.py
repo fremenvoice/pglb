@@ -1,15 +1,12 @@
 # telegram_bot/services/sheets_cache.py
 
-from telegram_bot.services.log_service import setup_logger
-logger = setup_logger()
-
 import os
 import csv
 import json
 import aiohttp
 import asyncio
 from io import StringIO
-
+from telegram_bot.services.log_service import setup_logger
 from telegram_bot.services.database import get_connection
 from telegram_bot.app.config import (
     SPREADSHEET_ID_OPERATORS,
@@ -22,6 +19,12 @@ from telegram_bot.app.config import (
     GID_OPERATORS_RENT
 )
 
+from dotenv import load_dotenv
+load_dotenv()
+
+logger = setup_logger()
+USE_SHEETS_CACHE = os.getenv("USE_SHEETS_CACHE", "false").lower() == "true"
+CACHE_FILE = os.path.join(os.path.dirname(__file__), "..", "..", ".cache", "sheets_data.json")
 FIXED_ROLES_PATH = os.path.join(os.path.dirname(__file__), "fixed_roles.json")
 
 
@@ -49,18 +52,22 @@ async def fetch_csv(spreadsheet_id: str, gid: int) -> list[list[str]]:
             return [row for row in reader if row and any(cell.strip() for cell in row)]
 
 
-async def load_all_from_sheets():
+async def load_all_from_sheets(force_reload: bool = False) -> dict:
+    if USE_SHEETS_CACHE and not force_reload and os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                logger.info("💾 Загружаем данные из sheets-кеша")
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"❌ Ошибка чтения кеша: {e}")
+
+    logger.info("🌐 Загружаем данные из Google Sheets")
     operators = await fetch_csv(SPREADSHEET_ID_OPERATORS, GID_OPERATORS)
     consultants = await fetch_csv(SPREADSHEET_ID_CONSULTANTS, GID_CONSULTANTS)
     phones = await fetch_csv(SPREADSHEET_ID_PHONES, GID_PHONES)
     operators_rent = await fetch_csv(SPREADSHEET_ID_OPERATORS_RENT, GID_OPERATORS_RENT)
 
-    logger.info(f"📊 Данные операторов: {operators}")
-    logger.info(f"📊 Данные консультантов: {consultants}")
-    logger.info(f"📊 Данные телефонов: {phones}")
-    logger.info(f"📊 Данные операторов аренды: {operators_rent}")
-
-    return {
+    result = {
         "operators": [row[0].strip() for row in operators if row],
         "consultants": [row[0].strip() for row in consultants if row],
         "phones": [
@@ -73,9 +80,19 @@ async def load_all_from_sheets():
         ]
     }
 
+    try:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+        logger.info("✅ Сохранили sheets-кеш локально")
+    except Exception as e:
+        logger.warning(f"❌ Не удалось сохранить кеш: {e}")
 
-async def sync_users_to_db_async():
-    data = await load_all_from_sheets()
+    return result
+
+
+async def sync_users_to_db_async(force_reload: bool = False):
+    data = await load_all_from_sheets(force_reload=force_reload)
     fixed_roles = load_fixed_roles()
 
     operator_fios = set(data["operators"])
@@ -83,20 +100,17 @@ async def sync_users_to_db_async():
     operator_rent_fios = {r["full_name"] for r in data["operators_rent"]}
     phone_map = {p["full_name"]: p["username"] for p in data["phones"]}
 
-    # Добавляем арендаторов в карту
     for r in data["operators_rent"]:
         phone_map[r["full_name"]] = r["username"]
 
-    # FIXED_ROLES добавляем вручную
     for username, (fio, _) in fixed_roles.items():
         phone_map[fio] = username
 
-    logger.info(f"📱 Объединённый список пользователей: {phone_map}")
+    logger.info(f"📱 Пользователи: {phone_map}")
     logger.info(f"🏠 Арендаторы: {operator_rent_fios}")
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            # Убедимся, что все роли есть
             for role in {"operator", "consultant", "admin", "operator_rent"}:
                 cur.execute(
                     "INSERT INTO roles (name) VALUES (%s) ON CONFLICT DO NOTHING",
@@ -104,7 +118,6 @@ async def sync_users_to_db_async():
                 )
             conn.commit()
 
-            # Обновление пользователей и ролей
             for fio, username in phone_map.items():
                 roles = []
 
@@ -121,8 +134,7 @@ async def sync_users_to_db_async():
                 if not roles:
                     continue
 
-                logger.info(f"📥 Синхронизация: {fio} ({username}) → {roles}")
-
+                logger.info(f"📥 {fio} ({username}) → {roles}")
                 cur.execute("""
                     INSERT INTO users (full_name, username)
                     VALUES (%s, %s)
@@ -136,7 +148,7 @@ async def sync_users_to_db_async():
                     cur.execute("SELECT id FROM roles WHERE name = %s", (role,))
                     res = cur.fetchone()
                     if not res:
-                        logger.warning(f"❗ Роль '{role}' не найдена в БД, пропущена.")
+                        logger.warning(f"❗ Роль '{role}' не найдена")
                         continue
                     role_id = res[0]
                     cur.execute(
@@ -145,8 +157,11 @@ async def sync_users_to_db_async():
                     )
 
         conn.commit()
-    logger.info("✅ Синхронизация пользователей завершена.")
+    logger.info("✅ Синхронизация завершена")
 
 
 if __name__ == "__main__":
-    asyncio.run(sync_users_to_db_async())
+    import sys
+    force = "--force-reload" in sys.argv
+    asyncio.run(sync_users_to_db_async(force_reload=force))
+
