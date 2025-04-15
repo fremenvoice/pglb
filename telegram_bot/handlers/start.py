@@ -84,7 +84,7 @@ async def handle_start_work(callback: CallbackQuery, state: FSMContext):
         await state.update_data({"active_message_ids": [new_msg.message_id]})
 
     elif primary_role == "operator_rent":
-        await send_qr_scanner(callback.message, role="operator_rent")
+        await send_qr_scanner(callback.message, role="operator_rent", state=state)
 
     else:
         await asyncio.gather(
