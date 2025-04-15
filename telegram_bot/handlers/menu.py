@@ -2,7 +2,7 @@ import logging
 import os
 import urllib.parse
 
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -18,6 +18,14 @@ from telegram_bot.handlers.qr_scanner import send_qr_scanner
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+
+async def delete_active_messages(bot: Bot, chat_id: int, ids: list[int]):
+    for msg_id in ids:
+        try:
+            await bot.delete_message(chat_id, msg_id)
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
 
 
 @router.callback_query(F.data.startswith("menu:"))
@@ -36,14 +44,7 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
     admin_subrole = data.get("admin_subrole")
     current_role = admin_subrole if user_role == "admin" and admin_subrole else user_role
 
-    # Удаление всех активных сообщений
-    active_ids = data.get("active_message_ids", [])
-    for msg_id in active_ids:
-        try:
-            await callback.bot.delete_message(callback.message.chat.id, msg_id)
-        except Exception as e:
-            logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
-
+    await delete_active_messages(callback.bot, callback.message.chat.id, data.get("active_message_ids", []))
     data["active_message_ids"] = []
     await state.update_data(data)
 
@@ -55,10 +56,9 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
             text = get_text_block(filename)
 
             if filename == "qr_scanner.md":
-                scanning_role = current_role
-                data["scanning_role"] = scanning_role
+                data["scanning_role"] = current_role
                 await state.update_data(data)
-                await send_qr_scanner(callback.message, scanning_role)
+                await send_qr_scanner(callback.message, current_role)
                 await callback.answer()
                 return
 
@@ -91,71 +91,64 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("admin_menu:"))
 async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
     choice = callback.data.split("admin_menu:")[1]
-    username = callback.from_user.username
-    info = get_user_info(username)
+    info = get_user_info(callback.from_user.username)
     if not info or "admin" not in info["roles"]:
         await callback.answer("⚠️ Доступ запрещён.")
         return
 
     data = await state.get_data()
-    for msg_id in data.get("active_message_ids", []):
-        try:
-            await callback.bot.delete_message(callback.message.chat.id, msg_id)
-        except Exception as e:
-            logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
-
-    data["active_message_ids"] = []
-    await state.update_data(data)
-
+    await delete_active_messages(callback.bot, callback.message.chat.id, data.get("active_message_ids", []))
     try:
         await callback.message.delete()
     except Exception as e:
         logger.warning(f"Не удалось удалить текущее сообщение admin_menu: {e}")
 
     if choice == "operator_rent":
-        data["admin_subrole"] = "operator_rent"
-        data["scanning_role"] = "operator_rent"
-        await state.update_data(data)
+        await state.update_data({
+            "admin_subrole": "operator_rent",
+            "scanning_role": "operator_rent",
+            "active_message_ids": []
+        })
         await send_qr_scanner(callback.message, role="operator_rent")
         await callback.answer()
         return
 
     if choice == "qr_scanner":
-        data["admin_subrole"] = None
-        data["scanning_role"] = "admin"
-        await state.update_data(data)
-
         text = get_text_block("qr_scanner.md")
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Вернуться к выбору роли", callback_data="admin_back")]
-        ])
-        new_msg = await callback.message.answer(text, reply_markup=kb)
-        await state.update_data({"active_message_ids": [new_msg.message_id]})
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="Вернуться к выбору роли", callback_data="admin_back")]]
+        )
+        msg = await callback.message.answer(text, reply_markup=kb)
+        await state.update_data({
+            "admin_subrole": None,
+            "scanning_role": "admin",
+            "active_message_ids": [msg.message_id]
+        })
         await callback.answer()
         return
 
     if choice == "none":
-        data["admin_subrole"] = None
-        data["scanning_role"] = None
-        await state.update_data(data)
-
         text = get_text_block("about_park.md")
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔁 На экран выбора роли", callback_data="admin_back")]
-        ])
-        new_msg = await callback.message.answer(text, reply_markup=kb)
-        await state.update_data({"active_message_ids": [new_msg.message_id]})
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔁 На экран выбора роли", callback_data="admin_back")]]
+        )
+        msg = await callback.message.answer(text, reply_markup=kb)
+        await state.update_data({
+            "admin_subrole": None,
+            "scanning_role": None,
+            "active_message_ids": [msg.message_id]
+        })
         await callback.answer()
         return
 
     if choice in ("operator", "consultant"):
-        data["admin_subrole"] = choice
-        data["scanning_role"] = None
-        await state.update_data(data)
-
         kb = get_menu_inline_keyboard_for_role(choice, only_back=True)
-        new_msg = await callback.message.answer(f"📋 Меню роли: {choice}", reply_markup=kb)
-        await state.update_data({"active_message_ids": [new_msg.message_id]})
+        msg = await callback.message.answer(f"📋 Меню роли: {choice}", reply_markup=kb)
+        await state.update_data({
+            "admin_subrole": choice,
+            "scanning_role": None,
+            "active_message_ids": [msg.message_id]
+        })
         await callback.answer()
         return
 
@@ -164,23 +157,17 @@ async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "admin_back")
 async def handle_admin_back(callback: CallbackQuery, state: FSMContext):
-    username = callback.from_user.username
-    info = get_user_info(username)
+    info = get_user_info(callback.from_user.username)
     if not info or "admin" not in info["roles"]:
         await callback.answer("⚠️ Доступ запрещён.")
         return
 
     full_name = info["full_name"]
-    text = render_welcome(full_name, "admin")
     kb = get_admin_role_choice_keyboard()
+    text = render_welcome(full_name, "admin")
 
     data = await state.get_data()
-    for msg_id in data.get("active_message_ids", []):
-        try:
-            await callback.bot.delete_message(callback.message.chat.id, msg_id)
-        except:
-            pass
-
+    await delete_active_messages(callback.bot, callback.message.chat.id, data.get("active_message_ids", []))
     try:
         await callback.message.delete()
     except:
@@ -188,15 +175,24 @@ async def handle_admin_back(callback: CallbackQuery, state: FSMContext):
 
     await state.clear()
 
-    new_msg = await callback.message.answer(text, reply_markup=kb)
-    await state.update_data({"active_message_ids": [new_msg.message_id]})
+    msg = await callback.message.answer(text, reply_markup=kb)
+    await state.update_data({"active_message_ids": [msg.message_id]})
     await callback.answer()
+
+
+async def show_main_menu_for_role(bot: Bot, chat_id: int, role: str, state: FSMContext):
+    kb = get_menu_inline_keyboard_for_role(role, only_back=(role != "operator_rent"))
+    msg = await bot.send_message(chat_id, f"📋 Меню роли: {role}", reply_markup=kb)
+    await state.update_data({
+        "admin_subrole": None if role not in ("operator", "consultant") else role,
+        "scanning_role": None,
+        "active_message_ids": [msg.message_id]
+    })
 
 
 @router.callback_query(F.data.startswith("back_to_menu:"))
 async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
-    username = callback.from_user.username
-    info = get_user_info(username)
+    info = get_user_info(callback.from_user.username)
     if not info or not info["roles"]:
         await callback.answer("❌ Нет доступа.")
         return
@@ -206,22 +202,16 @@ async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     admin_subrole = data.get("admin_subrole")
     current_role = admin_subrole if user_role == "admin" and admin_subrole else user_role
 
-    for msg_id in data.get("active_message_ids", []):
-        try:
-            await callback.bot.delete_message(callback.message.chat.id, msg_id)
-        except Exception as e:
-            logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
-
+    await delete_active_messages(callback.bot, callback.message.chat.id, data.get("active_message_ids", []))
     try:
         await callback.message.delete()
     except:
         pass
 
-    data["scanning_role"] = None
-    data["active_message_ids"] = []
-    await state.update_data(data)
-
     kb = get_menu_inline_keyboard_for_role(current_role, only_back=(user_role == "admin"))
-    new_msg = await callback.message.answer(f"📋 Меню роли: {current_role}", reply_markup=kb)
-    await state.update_data({"active_message_ids": [new_msg.message_id]})
+    msg = await callback.message.answer(f"📋 Меню роли: {current_role}", reply_markup=kb)
+    await state.update_data({
+        "scanning_role": None,
+        "active_message_ids": [msg.message_id]
+    })
     await callback.answer()
