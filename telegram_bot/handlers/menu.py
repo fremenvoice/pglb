@@ -1,12 +1,12 @@
-# telegram_bot/handlers/menu.py
 import asyncio
 import logging
 import os
 import urllib.parse
+from telegram_bot.services.image_cache import get_image
 
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from telegram_bot.services.access_control import get_user_info
 from telegram_bot.services.text_service import get_text_block, render_welcome
@@ -23,8 +23,6 @@ router = Router()
 
 
 async def delete_active_messages(bot: Bot, chat_id: int, ids: list[int]):
-    import asyncio
-
     async def delete_one(msg_id: int):
         try:
             await bot.delete_message(chat_id, msg_id)
@@ -34,14 +32,13 @@ async def delete_active_messages(bot: Bot, chat_id: int, ids: list[int]):
     await asyncio.gather(*(delete_one(msg_id) for msg_id in ids))
 
 
-
 @router.callback_query(F.data.startswith("menu:"))
 async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
     username = callback.from_user.username
     encoded_label = callback.data.split("menu:")[1]
     label = urllib.parse.unquote(encoded_label)
 
-    info = get_user_info(username)
+    info = await get_user_info(username)
     if not info or not info["roles"]:
         await callback.answer("❌ Нет доступа.")
         return
@@ -60,7 +57,7 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
 
     for item_label, filename in menu:
         if item_label == label:
-            text = get_text_block(filename)
+            text = await get_text_block(filename)
 
             if filename == "qr_scanner.md":
                 data["scanning_role"] = current_role
@@ -74,12 +71,15 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
                 message_ids.append(sent_text.message_id)
 
                 img_filename = "sitmap.png" if filename == "visitors.md" else "fireext.png"
-                img_path = os.path.join("telegram_bot", "domain", "img", img_filename)
-                sent_photo = await callback.message.answer_photo(
-                    photo=FSInputFile(img_path),
-                    reply_markup=get_back_to_menu_keyboard(current_role)
-                )
-                message_ids.append(sent_photo.message_id)
+                photo = get_image(img_filename)
+                if photo:
+                    sent_photo = await callback.message.answer_photo(
+                        photo=photo,
+                        reply_markup=get_back_to_menu_keyboard(current_role)
+                    )
+                    message_ids.append(sent_photo.message_id)
+                else:
+                    logger.warning(f"❌ Изображение {img_filename} не найдено в кеше.")
             else:
                 sent_msg = await callback.message.answer(
                     text,
@@ -98,7 +98,7 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("admin_menu:"))
 async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
     choice = callback.data.split("admin_menu:")[1]
-    info = get_user_info(callback.from_user.username)
+    info = await get_user_info(callback.from_user.username)
     if not info or "admin" not in info["roles"]:
         await callback.answer("⚠️ Доступ запрещён.")
         return
@@ -121,7 +121,7 @@ async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
         return
 
     if choice == "qr_scanner":
-        text = get_text_block("qr_scanner.md")
+        text = await get_text_block("qr_scanner.md")
         kb = InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="Вернуться к выбору роли", callback_data="admin_back")]]
         )
@@ -135,7 +135,7 @@ async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
         return
 
     if choice == "none":
-        text = get_text_block("about_park.md")
+        text = await get_text_block("about_park.md")
         kb = InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text="🔁 На экран выбора роли", callback_data="admin_back")]]
         )
@@ -164,7 +164,7 @@ async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "admin_back")
 async def handle_admin_back(callback: CallbackQuery, state: FSMContext):
-    info = get_user_info(callback.from_user.username)
+    info = await get_user_info(callback.from_user.username)
     if not info or "admin" not in info["roles"]:
         await callback.answer("⚠️ Доступ запрещён.")
         return
@@ -199,7 +199,7 @@ async def show_main_menu_for_role(bot: Bot, chat_id: int, role: str, state: FSMC
 
 @router.callback_query(F.data.startswith("back_to_menu:"))
 async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
-    info = get_user_info(callback.from_user.username)
+    info = await get_user_info(callback.from_user.username)
     if not info or not info["roles"]:
         await callback.answer("❌ Нет доступа.")
         return

@@ -67,7 +67,7 @@ async def send_qr_scanner(message: Message, role: str, state: FSMContext):
 @router.message(F.photo)
 async def global_qr_handler(message: Message, state: FSMContext):
     username = message.from_user.username
-    info = get_user_info(username)
+    info = await get_user_info(username)
     if not info or not info["roles"]:
         logger.info(f"@{username} не авторизован, игнорируем фото.")
         return
@@ -99,6 +99,8 @@ async def global_qr_handler(message: Message, state: FSMContext):
         return
 
     qr_text = decoded[0].data.decode("utf-8")
+    logger.debug(f"🔎 Распознан QR: {qr_text}")
+
     card_number = extract_card_number(qr_text)
     if not card_number:
         await _send_qr_response(message, "❌ В QR-коде нет f_persAcc.", scanning_role, state=state)

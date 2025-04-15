@@ -1,4 +1,4 @@
-# telegram_bot/handlers/start.py
+from telegram_bot.services.image_cache import get_image
 
 import logging
 import os
@@ -29,11 +29,11 @@ logger = logging.getLogger(__name__)
 async def start_handler(message: Message, state: FSMContext):
     username = message.from_user.username
     logger.info(f"👤 Старт взаимодействия: @{username}")
-    info = get_user_info(username)
+    info = await get_user_info(username)
 
     if not info or not info.get("is_active") or not info.get("roles"):
         logger.warning(f"🚫 Неавторизованный пользователь: @{username}")
-        text = get_text_block("about_park.md")
+        text = await get_text_block("about_park.md")  # Используем await
         await message.answer(text)
         return
 
@@ -43,12 +43,15 @@ async def start_handler(message: Message, state: FSMContext):
 
     await state.clear()
 
-    logo_path = os.path.join(os.path.dirname(__file__), "..", "domain", "img", "logo.png")
-    await message.answer_photo(FSInputFile(logo_path))
+    logo = get_image("logo.png")
+    if logo:
+        await message.answer_photo(logo)
+    else:
+        logger.warning("❌ Логотип logo.png не найден в кеше.")
 
     welcome_text = render_welcome(full_name, primary_role)
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
+        inline_keyboard=[ 
             [InlineKeyboardButton(text="🚀 Приступить к работе", callback_data="start_work")]
         ]
     )
@@ -58,7 +61,7 @@ async def start_handler(message: Message, state: FSMContext):
 @router.callback_query(F.data == "start_work")
 async def handle_start_work(callback: CallbackQuery, state: FSMContext):
     username = callback.from_user.username
-    info = get_user_info(username)
+    info = await get_user_info(username)
 
     if not info or not info.get("roles"):
         await callback.message.edit_text("🚫 Роль не определена.")

@@ -1,89 +1,81 @@
 # telegram_bot/services/access_control.py
 
 import logging
-import psycopg2
 import time
 from typing import Optional
-from functools import lru_cache
-
-from telegram_bot.services.database import get_connection
+from telegram_bot.services.database import get_async_connection
 
 logger = logging.getLogger(__name__)
 
-# ⏱️ Кеш TTL и контроль
-_LAST_CACHE_RESET = 0
 _CACHE_TTL_SECONDS = 30
+_user_cache: dict[str, tuple[float, dict]] = {}  # username -> (timestamp, data)
 
 
-def get_user_info(username: str) -> Optional[dict]:
+async def get_user_info(username: str) -> Optional[dict]:
     """
-    Возвращает информацию о пользователе с кешированием на 30 секунд.
+    Асинхронно возвращает информацию о пользователе с кешированием.
     """
-    global _LAST_CACHE_RESET
-
-    # Автоочистка кеша по TTL
-    if time.time() - _LAST_CACHE_RESET > _CACHE_TTL_SECONDS:
-        _get_user_info_cached.cache_clear()
-        _LAST_CACHE_RESET = time.time()
-        logger.debug("♻️ Кеш user_info очищен автоматически")
-
-    return _get_user_info_cached(username)
-
-
-@lru_cache(maxsize=128)
-def _get_user_info_cached(username: str) -> Optional[dict]:
     if not username:
         logger.warning("🛑 Запрос без username")
         return None
 
-    logger.debug(f"🔍 Запрос информации о пользователе: @{username}")
+    now = time.time()
+    cached = _user_cache.get(username)
+    if cached and now - cached[0] < _CACHE_TTL_SECONDS:
+        logger.debug(f"⚡ Данные пользователя @{username} из кеша")
+        return cached[1]
 
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, full_name, is_active FROM users WHERE username = %s", (username,))
-            row = cur.fetchone()
+    logger.debug(f"🔍 Запрос к БД о пользователе @{username}")
 
-            if not row:
-                logger.info(f"🙅 Пользователь @{username} не найден")
-                return None
+    conn = await get_async_connection()
+    try:
+        row = await conn.fetchrow(
+            "SELECT id, full_name, is_active FROM users WHERE username = $1", username
+        )
+        if not row:
+            logger.info(f"🙅 Пользователь @{username} не найден")
+            return None
 
-            user_id, full_name, is_active = row
+        roles = await conn.fetch(
+            """
+            SELECT r.name FROM user_roles ur
+            JOIN roles r ON ur.role_id = r.id
+            WHERE ur.user_id = $1
+            """,
+            row["id"]
+        )
+        role_names = [r["name"] for r in roles]
 
-            cur.execute("""
-                SELECT r.name FROM user_roles ur
-                JOIN roles r ON ur.role_id = r.id
-                WHERE ur.user_id = %s
-            """, (user_id,))
-            roles = [r[0] for r in cur.fetchall()]
+        result = {
+            "full_name": row["full_name"],
+            "roles": role_names,
+            "is_active": row["is_active"]
+        }
 
-            logger.info(f"✅ Пользователь @{username} найден: {full_name} | Роли: {roles}")
-
-            return {
-                "full_name": full_name,
-                "roles": roles,
-                "is_active": is_active
-            }
+        logger.info(f"✅ Пользователь @{username} найден: {row['full_name']} | Роли: {role_names}")
+        _user_cache[username] = (now, result)
+        return result
+    finally:
+        await conn.close()
 
 
 def clear_user_info_cache():
     """
     Ручной сброс кеша пользователей.
     """
-    _get_user_info_cached.cache_clear()
-    global _LAST_CACHE_RESET
-    _LAST_CACHE_RESET = time.time()
+    _user_cache.clear()
     logger.info("🧹 Кеш user_info сброшен вручную")
 
 
-def has_role(username: str, role: str) -> bool:
-    info = get_user_info(username)
+async def has_role(username: str, role: str) -> bool:
+    info = await get_user_info(username)
     result = info is not None and role in info["roles"]
     logger.debug(f"🔑 @{username} has_role('{role}') = {result}")
     return result
 
 
-def is_authorized(username: str) -> bool:
-    info = get_user_info(username)
+async def is_authorized(username: str) -> bool:
+    info = await get_user_info(username)
     result = info is not None and info["is_active"] and len(info["roles"]) > 0
     logger.debug(f"🔐 @{username} is_authorized() = {result}")
     return result

@@ -6,8 +6,9 @@ import json
 import aiohttp
 import asyncio
 from io import StringIO
+
 from telegram_bot.services.log_service import setup_logger
-from telegram_bot.services.database import get_connection
+from telegram_bot.services.database import get_sync_connection
 from telegram_bot.app.config import (
     SPREADSHEET_ID_OPERATORS,
     SPREADSHEET_ID_CONSULTANTS,
@@ -16,11 +17,8 @@ from telegram_bot.app.config import (
     GID_OPERATORS,
     GID_CONSULTANTS,
     GID_PHONES,
-    GID_OPERATORS_RENT
+    GID_OPERATORS_RENT,
 )
-
-from dotenv import load_dotenv
-load_dotenv()
 
 logger = setup_logger()
 USE_SHEETS_CACHE = os.getenv("USE_SHEETS_CACHE", "false").lower() == "true"
@@ -109,7 +107,7 @@ async def sync_users_to_db_async(force_reload: bool = False):
     logger.info(f"📱 Пользователи: {phone_map}")
     logger.info(f"🏠 Арендаторы: {operator_rent_fios}")
 
-    with get_connection() as conn:
+    with get_sync_connection() as conn:
         with conn.cursor() as cur:
             for role in {"operator", "consultant", "admin", "operator_rent"}:
                 cur.execute(
@@ -164,4 +162,3 @@ if __name__ == "__main__":
     import sys
     force = "--force-reload" in sys.argv
     asyncio.run(sync_users_to_db_async(force_reload=force))
-

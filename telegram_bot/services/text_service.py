@@ -1,10 +1,8 @@
-# telegram_bot/services/text_service.py
-
 import os
 import re
 import logging
 import asyncio
-import aiofiles  # ← ДОБАВЛЕНО
+import aiofiles  # ⬅️ используется для async чтения
 
 logger = logging.getLogger(__name__)
 BASE_PATH = os.path.join(os.path.dirname(__file__), "..", "domain", "text_blocks")
@@ -25,10 +23,22 @@ def escape_markdown(text: str) -> str:
     return re.sub(escape_chars, r'\\\1', text)
 
 
-def get_text_block(filename: str) -> str:
+def get_text_block_sync(filename: str) -> str:
     """
-    Быстрый доступ к текстовому блоку из кеша.
-    Если файл не был загружен — выдаст предупреждение.
+    Синхронный доступ к текстовому блоку из кеша.
+    Используется в render_welcome, где шаблон обрабатывается внутри sync-функции.
+    """
+    content = _text_blocks.get(filename)
+    if content is None:
+        logger.warning(f"⚠️ Блок текста {filename} не загружен в кеш.")
+        return f"⚠️ Блок текста `{escape_markdown(filename)}` не найден."
+    return content
+
+
+async def get_text_block(filename: str) -> str:
+    """
+    Асинхронный доступ к текстовому блоку из кеша.
+    Используется в большинстве async-хендлеров.
     """
     content = _text_blocks.get(filename)
     if content is None:
@@ -38,7 +48,11 @@ def get_text_block(filename: str) -> str:
 
 
 def render_welcome(full_name: str, role: str) -> str:
-    raw_template = get_text_block("welcome.md")
+    """
+    Отдаёт отрендеренный приветственный текст (с подстановкой ФИО и роли).
+    Использует синхронный get_text_block_sync.
+    """
+    raw_template = get_text_block_sync("welcome.md")
     role_display = role_display_names.get(role, role)
 
     full_name_safe = escape_markdown(full_name)
@@ -49,7 +63,7 @@ def render_welcome(full_name: str, role: str) -> str:
 
 async def preload_text_blocks():
     """
-    Асинхронно загружает все .md файлы из text_blocks в память.
+    Асинхронно загружает все .md файлы из text_blocks в память (_text_blocks).
     """
     global _text_blocks
     _text_blocks = {}
