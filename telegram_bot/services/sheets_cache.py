@@ -4,7 +4,6 @@ logger = setup_logger()
 import os
 import csv
 import json
-import logging
 import aiohttp
 import asyncio
 from io import StringIO
@@ -23,6 +22,7 @@ from telegram_bot.app.config import (
 
 FIXED_ROLES_PATH = os.path.join(os.path.dirname(__file__), "fixed_roles.json")
 
+
 def load_fixed_roles():
     if not os.path.exists(FIXED_ROLES_PATH):
         logger.warning("⚠️ Файл fixed_roles.json не найден")
@@ -36,15 +36,16 @@ def load_fixed_roles():
         logger.info(f"- {username}: {fio} → {role}")
     return raw
 
+
 async def fetch_csv(spreadsheet_id: str, gid: int) -> list[list[str]]:
     url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid={gid}"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
             response.raise_for_status()
-            text_data = await response.text(encoding='utf-8')
-            csv_data = StringIO(text_data)
-            reader = csv.reader(csv_data)
+            csv_text = await response.text(encoding='utf-8')
+            reader = csv.reader(StringIO(csv_text))
             return [row for row in reader if row and any(cell.strip() for cell in row)]
+
 
 async def load_all_from_sheets():
     operators = await fetch_csv(SPREADSHEET_ID_OPERATORS, GID_OPERATORS)
@@ -52,10 +53,10 @@ async def load_all_from_sheets():
     phones = await fetch_csv(SPREADSHEET_ID_PHONES, GID_PHONES)
     operators_rent = await fetch_csv(SPREADSHEET_ID_OPERATORS_RENT, GID_OPERATORS_RENT)
 
-    logger.info(f"Данные операторов: {operators}")
-    logger.info(f"Данные консультантов: {consultants}")
-    logger.info(f"Данные телефонов: {phones}")
-    logger.info(f"Данные операторов аренды: {operators_rent}")
+    logger.info(f"📊 Данные операторов: {operators}")
+    logger.info(f"📊 Данные консультантов: {consultants}")
+    logger.info(f"📊 Данные телефонов: {phones}")
+    logger.info(f"📊 Данные операторов аренды: {operators_rent}")
 
     return {
         "operators": [row[0].strip() for row in operators if row],
@@ -66,9 +67,10 @@ async def load_all_from_sheets():
         ],
         "operators_rent": [
             {"full_name": row[0].strip(), "username": row[3].strip()}
-            for row in operators_rent if len(row) >= 4 and row[0].strip() and row[3].strip()
+            for row in operators_rent if len(row) >= 4 and row[3].strip()
         ]
     }
+
 
 async def sync_users_to_db_async():
     data = await load_all_from_sheets()
@@ -79,22 +81,28 @@ async def sync_users_to_db_async():
     operator_rent_fios = {r["full_name"] for r in data["operators_rent"]}
     phone_map = {p["full_name"]: p["username"] for p in data["phones"]}
 
-    # Добавляем арендаторов
+    # Добавляем арендаторов в карту
     for r in data["operators_rent"]:
         phone_map[r["full_name"]] = r["username"]
 
+    # FIXED_ROLES добавляем вручную
     for username, (fio, _) in fixed_roles.items():
         phone_map[fio] = username
 
-    logger.info(f"📱 Пользователи из phones (с учётом аренды): {phone_map}")
-    logger.info(f"🏠 Пользователи арендаторы: {operator_rent_fios}")
+    logger.info(f"📱 Объединённый список пользователей: {phone_map}")
+    logger.info(f"🏠 Арендаторы: {operator_rent_fios}")
 
     with get_connection() as conn:
         with conn.cursor() as cur:
+            # Убедимся, что все роли есть
             for role in {"operator", "consultant", "admin", "operator_rent"}:
-                cur.execute("INSERT INTO roles (name) VALUES (%s) ON CONFLICT DO NOTHING", (role,))
+                cur.execute(
+                    "INSERT INTO roles (name) VALUES (%s) ON CONFLICT DO NOTHING",
+                    (role,)
+                )
             conn.commit()
 
+            # Обновление пользователей и ролей
             for fio, username in phone_map.items():
                 roles = []
 
@@ -111,7 +119,8 @@ async def sync_users_to_db_async():
                 if not roles:
                     continue
 
-                logger.info(f"📥 Вставка: {fio} ({username}) → {roles}")
+                logger.info(f"📥 Синхронизация: {fio} ({username}) → {roles}")
+
                 cur.execute("""
                     INSERT INTO users (full_name, username)
                     VALUES (%s, %s)
@@ -128,10 +137,14 @@ async def sync_users_to_db_async():
                         logger.warning(f"❗ Роль '{role}' не найдена в БД, пропущена.")
                         continue
                     role_id = res[0]
-                    cur.execute("INSERT INTO user_roles (user_id, role_id) VALUES (%s, %s)", (user_id, role_id))
+                    cur.execute(
+                        "INSERT INTO user_roles (user_id, role_id) VALUES (%s, %s)",
+                        (user_id, role_id)
+                    )
 
         conn.commit()
-    logger.info("✅ Пользователи синхронизированы с БД.")
+    logger.info("✅ Синхронизация пользователей завершена.")
+
 
 if __name__ == "__main__":
     asyncio.run(sync_users_to_db_async())

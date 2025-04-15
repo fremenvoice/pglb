@@ -1,10 +1,13 @@
 import psycopg2
 import logging
 from typing import Optional
+from functools import lru_cache
+
 from telegram_bot.services.database import get_connection
 
 logger = logging.getLogger(__name__)
 
+@lru_cache(maxsize=256)
 def get_user_info(username: str) -> Optional[dict]:
     if not username:
         logger.warning("🛑 Запрос без username")

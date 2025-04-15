@@ -41,7 +41,7 @@ async def fetch_card_info(card_number: str) -> dict | None:
 
 async def send_qr_scanner(message: Message, role: str):
     """
-    Используется при входе operator_rent напрямую в сканер.
+    Используется при входе в QR-сканер для разных ролей.
     """
     if role == "operator_rent":
         await message.answer("🔍 Отправьте фото с QR-кодом карты. Сканирование начнётся автоматически.")
@@ -73,6 +73,7 @@ async def global_qr_handler(message: Message, state: FSMContext):
         except Exception as e:
             logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
     data["active_message_ids"] = []
+    await state.update_data(data)
 
     # Статус
     progress_msg = await message.answer("📸 Распознаю QR-код...")
@@ -133,7 +134,11 @@ async def _send_qr_response(
 ):
     kb = _qr_keyboard(role)
     kwargs = {"reply_markup": kb} if kb else {}
-    msg = await message.answer(text, parse_mode="Markdown" if markdown else None, **kwargs)
+    msg = await message.answer(
+        text,
+        parse_mode="Markdown" if markdown else None,
+        **kwargs
+    )
     data["active_message_ids"].append(msg.message_id)
     await state.update_data(data)
 
@@ -142,6 +147,7 @@ async def _send_qr_response(
 async def handle_qr_again(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     scanning_role = data.get("scanning_role")
+
     try:
         await callback.message.delete()
     except Exception as e:
@@ -172,8 +178,10 @@ def _qr_keyboard(scanning_role: str) -> InlineKeyboardMarkup | None:
         back_text = "В главное меню"
 
     return InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(text="Сканировать ещё", callback_data="qr_again"),
-            InlineKeyboardButton(text=back_text, callback_data=back_callback)
-        ]]
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Сканировать ещё", callback_data="qr_again"),
+                InlineKeyboardButton(text=back_text, callback_data=back_callback)
+            ]
+        ]
     )
