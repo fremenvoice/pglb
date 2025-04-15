@@ -1,3 +1,5 @@
+# telegram_bot/handlers/qr_scanner.py
+
 import logging
 import re
 import cv2

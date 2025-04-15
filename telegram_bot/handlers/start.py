@@ -1,5 +1,8 @@
+# telegram_bot/handlers/start.py
+
 import logging
 import os
+import asyncio
 
 from aiogram import Router, F
 from aiogram.types import (
@@ -81,12 +84,14 @@ async def handle_start_work(callback: CallbackQuery, state: FSMContext):
         await send_qr_scanner(callback.message, role="operator_rent")
 
     else:
-        await callback.bot.send_chat_action(callback.message.chat.id, "typing")
-        await show_main_menu_for_role(
-            bot=callback.bot,
-            chat_id=callback.message.chat.id,
-            role=primary_role,
-            state=state
+        await asyncio.gather(
+            callback.bot.send_chat_action(callback.message.chat.id, "typing"),
+            show_main_menu_for_role(
+                bot=callback.bot,
+                chat_id=callback.message.chat.id,
+                role=primary_role,
+                state=state
+            )
         )
 
     await callback.answer()

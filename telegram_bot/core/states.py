@@ -1,5 +1,6 @@
-from aiogram.fsm.state import State, StatesGroup
+# telegram_bot/core/states.py
 
+from aiogram.fsm.state import State, StatesGroup
 
 class ContextState(StatesGroup):
     """

@@ -1,3 +1,5 @@
+# telegram_bot/core/router.py
+
 import logging
 from aiogram import Router
 from telegram_bot.handlers import start, menu, qr_scanner

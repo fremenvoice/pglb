@@ -1,3 +1,5 @@
+# telegram_bot/services/text_service.py
+
 import os
 import logging
 import re

@@ -1,3 +1,5 @@
+# telegram_bot/domain/menu_registry.py
+
 menu_by_role = {
     "operator": [
         ("📋 Обязанности", "duties_operator.md"),

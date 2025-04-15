@@ -1,3 +1,5 @@
+# telegram_bot/services/database.py
+
 import psycopg2
 import os
 import logging
