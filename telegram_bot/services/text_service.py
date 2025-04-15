@@ -8,11 +8,13 @@ BASE_PATH = os.path.join(os.path.dirname(__file__), "..", "domain", "text_blocks
 role_display_names = {
     "admin": "Администратор",
     "consultant": "Консультант",
-    "operator": "Оператор"
+    "operator": "Оператор",
+    "operator_rent": "Оператор арендатора"
+
 }
 
 def escape_markdown(text: str) -> str:
-    escape_chars = r'([\\`*_{}\[\]()#+\-.!])'
+    escape_chars = r'([\\*_{}\[\]()#+\-.!])'
     return re.sub(escape_chars, r'\\\1', text)
 
 def get_text_block(filename: str) -> str:
@@ -29,5 +31,10 @@ def get_text_block(filename: str) -> str:
 def render_welcome(full_name: str, role: str) -> str:
     raw_template = get_text_block("welcome.md")
     role_display = role_display_names.get(role, role)
-    formatted = raw_template.format(ФИО=full_name, role=role_display)
+
+    # Экранируем для MarkdownV2
+    full_name_safe = escape_markdown(full_name)
+    role_safe = escape_markdown(role_display)
+
+    formatted = raw_template.format(ФИО=full_name_safe, role=role_safe)
     return formatted

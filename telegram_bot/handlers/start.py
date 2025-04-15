@@ -7,12 +7,9 @@ from aiogram.fsm.context import FSMContext
 
 from telegram_bot.services.access_control import get_user_info
 from telegram_bot.services.text_service import get_text_block, render_welcome
-from telegram_bot.keyboards.inline import (
-    get_admin_role_choice_keyboard
-)
-
-# Импорт обработчика меню
+from telegram_bot.keyboards.inline import get_admin_role_choice_keyboard
 from telegram_bot.handlers.menu import back_to_main_menu as handle_back_to_main_menu
+from telegram_bot.handlers.qr_scanner import send_qr_scanner  # обязательно импортировать
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -70,16 +67,23 @@ async def handle_start_work(callback: CallbackQuery, state: FSMContext):
     logger.info(f"⚙️ @{username} нажал 'Приступить к работе'")
 
     if primary_role == "admin":
-        # Для админов — редактируем сообщение с выбором меню
         text = render_welcome(full_name, primary_role)
         kb = get_admin_role_choice_keyboard()
         await callback.message.edit_text(text, reply_markup=kb)
-    else:
-        # Оператор / консультант — передаём в menu.py
-        await callback.message.edit_reply_markup()  # удалим кнопку
-        await callback.bot.send_chat_action(callback.message.chat.id, "typing")
 
-        # Вызываем обработчик возврата в главное меню роли
+    elif primary_role == "operator_rent":
+        # Удаляем сообщение и переходим сразу в QR-режим
+        try:
+            await callback.message.delete()
+        except Exception as e:
+            logger.warning(f"Не удалось удалить сообщение с приветствием: {e}")
+
+        await send_qr_scanner(callback.message, role="operator_rent")
+
+    else:
+        # Оператор или консультант
+        await callback.message.edit_reply_markup()  # Убираем кнопку
+        await callback.bot.send_chat_action(callback.message.chat.id, "typing")
         await handle_back_to_main_menu(
             callback=CallbackQuery(
                 id=callback.id,
