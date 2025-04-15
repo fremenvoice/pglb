@@ -1,9 +1,8 @@
-# telegram_bot/handlers/qr_scanner.py
-
 import logging
 import re
 import cv2
 import numpy as np
+import asyncio
 from pyzbar.pyzbar import decode
 import aiohttp
 
@@ -40,25 +39,29 @@ async def fetch_card_info(card_number: str) -> dict | None:
 
 async def update_active_messages(message: Message, state: FSMContext, new_ids: list[int]):
     data = await state.get_data()
-    for msg_id in data.get("active_message_ids", []):
-        try:
-            await message.bot.delete_message(message.chat.id, msg_id)
-        except Exception as e:
-            logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+    delete_tasks = [
+        message.bot.delete_message(message.chat.id, msg_id)
+        for msg_id in data.get("active_message_ids", [])
+    ]
+    results = await asyncio.gather(*delete_tasks, return_exceptions=True)
+    for msg_id, result in zip(data.get("active_message_ids", []), results):
+        if isinstance(result, Exception):
+            logger.warning(f"Не удалось удалить сообщение {msg_id}: {result}")
+
     await state.update_data({
         **data,
         "active_message_ids": new_ids
     })
 
 
-async def send_qr_scanner(message: Message, role: str):
+async def send_qr_scanner(message: Message, role: str, state: FSMContext):
     if role == "operator_rent":
         msg = await message.answer("🔍 Отправьте фото с QR-кодом карты. Сканирование начнётся автоматически.")
     else:
         kb = _qr_keyboard(role)
         msg = await message.answer("🔍 Отправьте фото с QR-кодом или выберите действие:", reply_markup=kb)
 
-    await update_active_messages(message, message.bot.fsm.get_state(message.from_user.id), [msg.message_id])
+    await update_active_messages(message, state, [msg.message_id])
 
 
 @router.message(F.photo)
@@ -73,10 +76,14 @@ async def global_qr_handler(message: Message, state: FSMContext):
     user_role = info["roles"][0]
     scanning_role = data.get("scanning_role") or data.get("admin_subrole") or user_role
     data["scanning_role"] = scanning_role
-    await state.update_data(data)
+
+    await update_active_messages(message, state, [])
 
     progress_msg = await message.answer("📸 Распознаю QR-код...")
-    await update_active_messages(message, state, [progress_msg.message_id, message.message_id])
+    await state.update_data({
+        **data,
+        "active_message_ids": [progress_msg.message_id, message.message_id]
+    })
 
     photo: PhotoSize = message.photo[-1]
     file = await message.bot.get_file(photo.file_id)
@@ -88,18 +95,18 @@ async def global_qr_handler(message: Message, state: FSMContext):
     await progress_msg.delete()
 
     if not decoded:
-        await _send_qr_response(message, "❌ Не удалось распознать QR.", scanning_role, state)
+        await _send_qr_response(message, "❌ Не удалось распознать QR.", scanning_role, state=state)
         return
 
     qr_text = decoded[0].data.decode("utf-8")
     card_number = extract_card_number(qr_text)
     if not card_number:
-        await _send_qr_response(message, "❌ В QR-коде нет f_persAcc.", scanning_role, state)
+        await _send_qr_response(message, "❌ В QR-коде нет f_persAcc.", scanning_role, state=state)
         return
 
     data_api = await fetch_card_info(card_number)
     if not data_api:
-        await _send_qr_response(message, "❌ Ошибка при запросе к серверу.", scanning_role, state)
+        await _send_qr_response(message, "❌ Ошибка при запросе к серверу.", scanning_role, state=state)
         return
 
     balance = data_api.get("Balance", "неизвестно")
@@ -115,13 +122,14 @@ async def global_qr_handler(message: Message, state: FSMContext):
             place = h.get("parkObjectName", "")
             text += f"{dt} {sign}{val} {place}\n"
 
-    await _send_qr_response(message, text, scanning_role, state, markdown=True)
+    await _send_qr_response(message, text, scanning_role, state=state, markdown=True)
 
 
 async def _send_qr_response(
     message: Message,
     text: str,
     role: str,
+    *,
     state: FSMContext,
     markdown: bool = False
 ):
@@ -145,8 +153,12 @@ async def handle_qr_again(callback: CallbackQuery, state: FSMContext):
         logger.warning(f"Не удалось удалить сообщение: {e}")
 
     kb = _qr_keyboard(scanning_role)
-    msg = await callback.message.answer("Пожалуйста, отправьте новое фото с QR-кодом.", reply_markup=kb)
-    await update_active_messages(callback.message, state, [msg.message_id])
+    msg = await callback.message.answer(
+        "Пожалуйста, отправьте новое фото с QR-кодом.",
+        reply_markup=kb if kb else None
+    )
+    data["active_message_ids"].append(msg.message_id)
+    await state.update_data(data)
     await callback.answer()
 
 

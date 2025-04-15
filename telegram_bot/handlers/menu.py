@@ -1,5 +1,5 @@
 # telegram_bot/handlers/menu.py
-
+import asyncio
 import logging
 import os
 import urllib.parse
@@ -23,11 +23,16 @@ router = Router()
 
 
 async def delete_active_messages(bot: Bot, chat_id: int, ids: list[int]):
-    for msg_id in ids:
+    import asyncio
+
+    async def delete_one(msg_id: int):
         try:
             await bot.delete_message(chat_id, msg_id)
         except Exception as e:
             logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
+
+    await asyncio.gather(*(delete_one(msg_id) for msg_id in ids))
+
 
 
 @router.callback_query(F.data.startswith("menu:"))
@@ -60,7 +65,7 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
             if filename == "qr_scanner.md":
                 data["scanning_role"] = current_role
                 await state.update_data(data)
-                await send_qr_scanner(callback.message, current_role)
+                await send_qr_scanner(callback.message, current_role, state)
                 await callback.answer()
                 return
 
