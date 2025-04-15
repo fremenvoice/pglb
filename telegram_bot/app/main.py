@@ -5,6 +5,7 @@ import logging
 
 from telegram_bot.core.dispatcher import bot, dispatcher
 from telegram_bot.core.router import setup_routers
+from telegram_bot.services.text_service import preload_text_blocks  # ← добавили
 
 # Настройка базового логгирования
 logging.basicConfig(
@@ -14,6 +15,8 @@ logging.basicConfig(
 logger = logging.getLogger("PGB_BOT")
 
 async def main():
+    await preload_text_blocks()  # ← добавили прелоад перед запуском бота
+
     dispatcher.include_router(setup_routers())
     logger.info("🚀 Бот запущен")
     await dispatcher.start_polling(bot)
