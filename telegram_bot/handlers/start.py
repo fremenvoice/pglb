@@ -1,5 +1,6 @@
-from telegram_bot.services.image_cache import get_image
+# telegram_bot/handlers/start.py
 
+from telegram_bot.services.image_cache import get_image
 import logging
 import os
 import asyncio

@@ -1,3 +1,5 @@
+# telegram_bot/services/image_cache.py
+
 import os
 import logging
 from aiogram.types import FSInputFile
