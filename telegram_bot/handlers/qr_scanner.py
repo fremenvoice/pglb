@@ -1,5 +1,4 @@
 # telegram_bot/handlers/qr_scanner.py
-
 import logging
 import re
 import cv2
@@ -39,21 +38,25 @@ async def fetch_card_info(card_number: str) -> dict | None:
         return None
 
 
-async def update_active_messages(message: Message, state: FSMContext, new_ids: list[int]):
-    data = await state.get_data()
-    delete_tasks = [
-        message.bot.delete_message(message.chat.id, msg_id)
-        for msg_id in data.get("active_message_ids", [])
-    ]
-    results = await asyncio.gather(*delete_tasks, return_exceptions=True)
-    for msg_id, result in zip(data.get("active_message_ids", []), results):
-        if isinstance(result, Exception):
-            logger.warning(f"Не удалось удалить сообщение {msg_id}: {result}")
+async def safe_delete_by_id(bot, chat_id: int, message_id: int):
+    """
+    Вспомогательная функция для асинхронного удаления сообщения по chat_id и message_id.
+    """
+    try:
+        await bot.delete_message(chat_id, message_id)
+    except Exception as e:
+        logger.warning(f"Не удалось удалить сообщение {message_id}: {e}")
 
-    await state.update_data({
-        **data,
-        "active_message_ids": new_ids
-    })
+
+async def update_active_messages(message: Message, state: FSMContext, new_ids: list[int]):
+    """
+    Удаляет старые сообщения, используя safe_delete_by_id, и обновляет данные состояния.
+    """
+    data = await state.get_data()
+    old_ids = data.get("active_message_ids", [])
+    for msg_id in old_ids:
+        asyncio.create_task(safe_delete_by_id(message.bot, message.chat.id, msg_id))
+    await state.update_data({**data, "active_message_ids": new_ids})
 
 
 async def send_qr_scanner(message: Message, role: str, state: FSMContext):
@@ -62,7 +65,6 @@ async def send_qr_scanner(message: Message, role: str, state: FSMContext):
     else:
         kb = _qr_keyboard(role)
         msg = await message.answer("🔍 Отправьте фото с QR-кодом или выберите действие:", reply_markup=kb)
-
     await update_active_messages(message, state, [msg.message_id])
 
 
@@ -79,13 +81,12 @@ async def global_qr_handler(message: Message, state: FSMContext):
     scanning_role = data.get("scanning_role") or data.get("admin_subrole") or user_role
     data["scanning_role"] = scanning_role
 
-    await update_active_messages(message, state, [])
+    # Фоново удаляем активные сообщения
+    asyncio.create_task(update_active_messages(message, state, []))
 
+    # Отправляем индикатор загрузки
     progress_msg = await message.answer("📸 Распознаю QR-код...")
-    await state.update_data({
-        **data,
-        "active_message_ids": [progress_msg.message_id, message.message_id]
-    })
+    await state.update_data({**data, "active_message_ids": [progress_msg.message_id, message.message_id]})
 
     photo: PhotoSize = message.photo[-1]
     file = await message.bot.get_file(photo.file_id)
@@ -94,7 +95,8 @@ async def global_qr_handler(message: Message, state: FSMContext):
     img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
     decoded = decode(img)
 
-    await progress_msg.delete()
+    # Фоново удаляем индикатор загрузки
+    asyncio.create_task(safe_delete_by_id(message.bot, message.chat.id, progress_msg.message_id))
 
     if not decoded:
         await _send_qr_response(message, "❌ Не удалось распознать QR.", scanning_role, state=state)
@@ -151,10 +153,8 @@ async def handle_qr_again(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     scanning_role = data.get("scanning_role")
 
-    try:
-        await callback.message.delete()
-    except Exception as e:
-        logger.warning(f"Не удалось удалить сообщение: {e}")
+    # Фоново удаляем текущее сообщение через safe_delete_by_id
+    asyncio.create_task(safe_delete_by_id(callback.message.bot, callback.message.chat.id, callback.message.message_id))
 
     kb = _qr_keyboard(scanning_role)
     msg = await callback.message.answer(
@@ -179,5 +179,5 @@ def _qr_keyboard(scanning_role: str) -> InlineKeyboardMarkup | None:
 
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="Сканировать ещё", callback_data="qr_again"),
-                          InlineKeyboardButton(text=back_text, callback_data=back_callback)]]
+                           InlineKeyboardButton(text=back_text, callback_data=back_callback)]]
     )

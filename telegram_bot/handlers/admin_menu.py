@@ -1,5 +1,7 @@
+# telegram_bot/handlers/admin_menu.py
 import logging
 import os
+import asyncio
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile
@@ -14,6 +16,16 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+async def safe_delete_by_id(bot, chat_id: int, message_id: int):
+    """
+    Вспомогательная функция для асинхронного удаления сообщения по chat_id и message_id.
+    """
+    try:
+        await bot.delete_message(chat_id, message_id)
+    except Exception as e:
+        logger.warning(f"Не удалось удалить сообщение {message_id}: {e}")
+
+
 @router.callback_query(F.data == "admin_back")
 async def return_to_role_selection(callback: CallbackQuery, state: FSMContext):
     username = callback.from_user.username
@@ -26,17 +38,12 @@ async def return_to_role_selection(callback: CallbackQuery, state: FSMContext):
     full_name = info["full_name"]
     primary_role = info["roles"][0]
 
-    # Удаляем предыдущие сообщения
+    # Удаляем предыдущие сообщения фоновой задачей
     data = await state.get_data()
     for msg_id in data.get("active_message_ids", []):
-        try:
-            await callback.bot.delete_message(callback.message.chat.id, msg_id)
-        except Exception:
-            pass
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
+        asyncio.create_task(safe_delete_by_id(callback.bot, callback.message.chat.id, msg_id))
+    # Удаляем текущее сообщение
+    asyncio.create_task(safe_delete_by_id(callback.bot, callback.message.chat.id, callback.message.message_id))
 
     # Отправляем логотип и welcome
     logo_path = os.path.join(os.path.dirname(__file__), "..", "domain", "img", "logo.png")
@@ -57,14 +64,8 @@ async def admin_operator_rent_entry(callback: CallbackQuery, state: FSMContext):
 
     # Удаляем предыдущее сообщение
     for msg_id in data.get("active_message_ids", []):
-        try:
-            await callback.bot.delete_message(callback.message.chat.id, msg_id)
-        except Exception as e:
-            logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
+        asyncio.create_task(safe_delete_by_id(callback.bot, callback.message.chat.id, msg_id))
+    asyncio.create_task(safe_delete_by_id(callback.bot, callback.message.chat.id, callback.message.message_id))
 
     await state.update_data({
         "admin_subrole": "operator_rent",

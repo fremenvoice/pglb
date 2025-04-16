@@ -1,5 +1,4 @@
 # telegram_bot/handlers/menu.py
-
 import asyncio
 import logging
 import os
@@ -24,13 +23,22 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+async def safe_delete_by_id(bot: Bot, chat_id: int, message_id: int):
+    """
+    Вспомогательная функция для асинхронного удаления сообщения по chat_id и message_id.
+    """
+    try:
+        await bot.delete_message(chat_id, message_id)
+    except Exception as e:
+        logger.warning(f"Не удалось удалить сообщение {message_id}: {e}")
+
+
 async def delete_active_messages(bot: Bot, chat_id: int, ids: list[int]):
     async def delete_one(msg_id: int):
         try:
             await bot.delete_message(chat_id, msg_id)
         except Exception as e:
             logger.warning(f"Не удалось удалить сообщение {msg_id}: {e}")
-
     await asyncio.gather(*(delete_one(msg_id) for msg_id in ids))
 
 
@@ -50,7 +58,8 @@ async def handle_menu_callback(callback: CallbackQuery, state: FSMContext):
     admin_subrole = data.get("admin_subrole")
     current_role = admin_subrole if user_role == "admin" and admin_subrole else user_role
 
-    await delete_active_messages(callback.bot, callback.message.chat.id, data.get("active_message_ids", []))
+    # Фоновое удаление ранее активных сообщений
+    asyncio.create_task(delete_active_messages(callback.bot, callback.message.chat.id, data.get("active_message_ids", [])))
     data["active_message_ids"] = []
     await state.update_data(data)
 
@@ -106,11 +115,10 @@ async def handle_admin_menu_choice(callback: CallbackQuery, state: FSMContext):
         return
 
     data = await state.get_data()
-    await delete_active_messages(callback.bot, callback.message.chat.id, data.get("active_message_ids", []))
-    try:
-        await callback.message.delete()
-    except Exception as e:
-        logger.warning(f"Не удалось удалить текущее сообщение admin_menu: {e}")
+    # Фоновое удаление старых сообщений
+    asyncio.create_task(delete_active_messages(callback.bot, callback.message.chat.id, data.get("active_message_ids", [])))
+    # Используем safe_delete_by_id вместо прямого удаления
+    asyncio.create_task(safe_delete_by_id(callback.message.bot, callback.message.chat.id, callback.message.message_id))
 
     if choice == "operator_rent":
         await state.update_data({
@@ -176,27 +184,15 @@ async def handle_admin_back(callback: CallbackQuery, state: FSMContext):
     text = render_welcome(full_name, "admin")
 
     data = await state.get_data()
-    await delete_active_messages(callback.bot, callback.message.chat.id, data.get("active_message_ids", []))
-    try:
-        await callback.message.delete()
-    except:
-        pass
+    # Фоновое удаление активных сообщений
+    asyncio.create_task(delete_active_messages(callback.bot, callback.message.chat.id, data.get("active_message_ids", [])))
+    asyncio.create_task(safe_delete_by_id(callback.message.bot, callback.message.chat.id, callback.message.message_id))
 
     await state.clear()
 
     msg = await callback.message.answer(text, reply_markup=kb)
     await state.update_data({"active_message_ids": [msg.message_id]})
     await callback.answer()
-
-
-async def show_main_menu_for_role(bot: Bot, chat_id: int, role: str, state: FSMContext):
-    kb = get_menu_inline_keyboard_for_role(role, only_back=(role != "operator_rent"))
-    msg = await bot.send_message(chat_id, f"📋 Меню роли: {role}", reply_markup=kb)
-    await state.update_data({
-        "admin_subrole": None if role not in ("operator", "consultant") else role,
-        "scanning_role": None,
-        "active_message_ids": [msg.message_id]
-    })
 
 
 @router.callback_query(F.data.startswith("back_to_menu:"))
@@ -211,11 +207,9 @@ async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     admin_subrole = data.get("admin_subrole")
     current_role = admin_subrole if user_role == "admin" and admin_subrole else user_role
 
-    await delete_active_messages(callback.bot, callback.message.chat.id, data.get("active_message_ids", []))
-    try:
-        await callback.message.delete()
-    except:
-        pass
+    # Фоновое удаление активных сообщений
+    asyncio.create_task(delete_active_messages(callback.bot, callback.message.chat.id, data.get("active_message_ids", [])))
+    asyncio.create_task(safe_delete_by_id(callback.message.bot, callback.message.chat.id, callback.message.message_id))
 
     kb = get_menu_inline_keyboard_for_role(current_role, only_back=(user_role == "admin"))
     msg = await callback.message.answer(f"📋 Меню роли: {current_role}", reply_markup=kb)
@@ -224,3 +218,14 @@ async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
         "active_message_ids": [msg.message_id]
     })
     await callback.answer()
+
+
+# Функция, используемая в start.py для показа главного меню
+async def show_main_menu_for_role(bot: Bot, chat_id: int, role: str, state: FSMContext):
+    kb = get_menu_inline_keyboard_for_role(role, only_back=(role != "operator_rent"))
+    msg = await bot.send_message(chat_id, f"📋 Меню роли: {role}", reply_markup=kb)
+    await state.update_data({
+        "admin_subrole": None if role not in ("operator", "consultant") else role,
+        "scanning_role": None,
+        "active_message_ids": [msg.message_id]
+    })
