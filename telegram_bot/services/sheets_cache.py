@@ -42,9 +42,6 @@ def load_fixed_roles():
 
 
 async def fetch_csv_text(spreadsheet_id: str, gid: int) -> str:
-    """
-    Загружает CSV из Google Sheets как текст.
-    """
     url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid={gid}"
     logger.info(f"📡 Запрос данных с Google Sheets: {url}")
     try:
@@ -59,17 +56,10 @@ async def fetch_csv_text(spreadsheet_id: str, gid: int) -> str:
 
 
 def compute_hash(data: str) -> str:
-    """
-    Вычисляет MD5-хэш для переданной строки.
-    """
     return hashlib.md5(data.encode("utf-8")).hexdigest()
 
 
 def compute_diff(old: dict, new: dict) -> dict:
-    """
-    Простой механизм сравнения двух словарей по ключам.
-    Возвращает словарь с изменёнными ключами: если значение изменилось – приводится старое и новое значение.
-    """
     diff = {}
     for key in new:
         if key not in old:
@@ -88,18 +78,6 @@ def parse_csv(csv_text: str) -> list[list[str]]:
 
 
 async def load_all_from_sheets(force_reload: bool = False) -> dict:
-    """
-    Загружает данные из Google Sheets с проверкой хэша.
-    
-    Если кеш доступен и force_reload=False, функция:
-      - Считывает кешированные данные и ранее сохранённый хэш.
-      - Загружает свежие данные из Google Sheets.
-      - Вычисляет новый хэш свежих данных и сравнивает с сохранённым.
-      
-    Если хэш не изменился, возвращает кешированные данные, иначе:
-      - Логирует отличия между кешем и новыми данными.
-      - Сохраняет новые данные и новый хэш.
-    """
     os.makedirs(CACHE_DIR, exist_ok=True)
 
     cached_data = {}
@@ -128,11 +106,11 @@ async def load_all_from_sheets(force_reload: bool = False) -> dict:
         "operators": [row[0].strip() for row in operators if row],
         "consultants": [row[0].strip() for row in consultants if row],
         "phones": [
-            {"full_name": row[0].strip(), "username": row[2].strip()}
+            {"full_name": row[0].strip(), "username": row[2].strip().lstrip("@")}
             for row in phones if len(row) >= 3 and row[2].strip()
         ],
         "operators_rent": [
-            {"full_name": row[0].strip(), "username": row[3].strip()}
+            {"full_name": row[0].strip(), "username": row[3].strip().lstrip("@")}
             for row in operators_rent if len(row) >= 4 and row[3].strip()
         ]
     }
