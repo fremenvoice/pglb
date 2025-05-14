@@ -1,0 +1,33 @@
+version: '3.9'
+
+services:
+  bot:
+    build: .
+    container_name: pgb_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - db
+    networks:
+      - pgb_network
+
+  db:
+    image: postgres:15-alpine
+    container_name: pgb_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgb_pgdata:/var/lib/postgresql/data
+    networks:
+      - pgb_network
+
+volumes:
+  pgb_pgdata:
+
+networks:
+  pgb_network:
+    driver: bridge
