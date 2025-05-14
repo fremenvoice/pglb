@@ -1,11 +1,9 @@
 # telegram_bot/handlers/start.py
-
-from telegram_bot.services.image_cache import get_image
+import asyncio
 import logging
 import os
-import asyncio
 
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import (
     Message,
     FSInputFile,
@@ -26,6 +24,16 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 
+async def safe_delete_by_id(bot: Bot, chat_id: int, message_id: int):
+    """
+    Вспомогательная функция для асинхронного удаления сообщения по chat_id и message_id.
+    """
+    try:
+        await bot.delete_message(chat_id, message_id)
+    except Exception as e:
+        logger.warning(f"Не удалось удалить сообщение {message_id}: {e}")
+
+
 @router.message(F.text == "/start")
 async def start_handler(message: Message, state: FSMContext):
     username = message.from_user.username
@@ -34,7 +42,7 @@ async def start_handler(message: Message, state: FSMContext):
 
     if not info or not info.get("is_active") or not info.get("roles"):
         logger.warning(f"🚫 Неавторизованный пользователь: @{username}")
-        text = await get_text_block("about_park.md")  # Используем await
+        text = await get_text_block("about_park.md")
         await message.answer(text)
         return
 
@@ -44,11 +52,15 @@ async def start_handler(message: Message, state: FSMContext):
 
     await state.clear()
 
-    logo = get_image("logo.png")
+    logo = None
+    try:
+        from telegram_bot.services.image_cache import get_image
+        logo = get_image("logo.png")
+    except Exception:
+        logger.warning("❌ Логотип logo.png не найден в кеше.")
+
     if logo:
         await message.answer_photo(logo)
-    else:
-        logger.warning("❌ Логотип logo.png не найден в кеше.")
 
     welcome_text = render_welcome(full_name, primary_role)
     keyboard = InlineKeyboardMarkup(
@@ -72,10 +84,8 @@ async def handle_start_work(callback: CallbackQuery, state: FSMContext):
     primary_role = info["roles"][0]
     logger.info(f"⚙️ @{username} нажал 'Приступить к работе'")
 
-    try:
-        await callback.message.delete()
-    except Exception as e:
-        logger.warning(f"❗ Не удалось удалить сообщение с приветствием: {e}")
+    # Вместо прямого удаления используем safe_delete_by_id через create_task
+    asyncio.create_task(safe_delete_by_id(callback.message.bot, callback.message.chat.id, callback.message.message_id))
 
     if primary_role == "admin":
         await state.set_state(ContextState.admin_selected_role)

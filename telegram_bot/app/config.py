@@ -1,6 +1,4 @@
 # telegram_bot/app/config.py
-
-
 import os
 from dotenv import load_dotenv
 
@@ -30,3 +28,6 @@ GID_OPERATORS_RENT = int(_get_env("GID_OPERATORS_RENT", "0"))
 # QR API
 QR_API_URL = _get_env("QR_API_URL", required=True)
 QR_API_KEY = _get_env("QR_API_KEY", required=True)
+
+# Синхронизация: интервал обновления данных из Google Sheets в секундах (например, 300 сек = 5 минут)
+INTERVAL_SYNC = int(_get_env("INTERVAL_SYNC", "300"))
